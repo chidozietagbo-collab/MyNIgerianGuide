@@ -1,0 +1,388 @@
+// MyNigerianGuide — Core Database Schema
+// Source: Product & Technical Brief v3.0, Section 19
+// 17 entities. Table names are snake_case via @@map; fields stay camelCase
+// (Prisma convention) so generated client code reads naturally.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DELETED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  OPERATIONS_MANAGER
+  VERIFICATION_OFFICER
+  MODERATION_OFFICER
+  SUPPORT_AGENT
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+  REVOKED
+}
+
+enum KeywordStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FLAGGED
+}
+
+enum KeywordSource {
+  YELLOW_PAGES
+  NIGERIA_SPECIFIC
+  USER_SUBMITTED
+}
+
+enum ReportEntityType {
+  POST
+  REVIEW
+  BUSINESS_PAGE
+  USER
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum PlacementType {
+  TOP_OF_SEARCH
+  FEATURED_BADGE
+}
+
+enum MediaEntityType {
+  BUSINESS_PAGE
+  POST
+  USER
+}
+
+// ---------- Core identity ----------
+
+// id is NOT auto-generated here — it is always set explicitly to match the
+// corresponding auth.users.id from Supabase Auth (see the on_auth_user_created
+// trigger set up in Step 3). Personal Account is the root identity per
+// Brief section 3.4.
+model User {
+  id            String        @id
+  email         String        @unique
+  name          String?
+  username      String?       @unique
+  bio           String?
+  avatarUrl     String?
+  city          String?
+  state         String?
+  emailVerified Boolean       @default(false)
+  accountStatus AccountStatus @default(ACTIVE)
+  role          Role          @default(USER)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  adminUser              AdminUser?
+  businessPages          BusinessPage[]
+  posts                  Post[]
+  follows                Follow[]
+  reviews                Review[]
+  notifications          Notification[]
+  searchQueries          SearchQuery[]
+  pageViews              PageView[]
+  auditLogs              AuditLog[]
+  reportsFiled           Report[]               @relation("ReporterReports")
+  reportsResolved        Report[]               @relation("ResolvedReports")
+  verificationsReviewed  VerificationRequest[]  @relation("ReviewedVerifications")
+  adminsCreated          AdminUser[]            @relation("CreatedByAdmin")
+
+  @@map("users")
+}
+
+model AdminUser {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id])
+  adminRole   AdminRole
+  isActive    Boolean   @default(true)
+  createdById String?
+  createdBy   User?     @relation("CreatedByAdmin", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@map("admin_users")
+}
+
+// ---------- Taxonomy ----------
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  icon        String?
+  description String?
+  isActive    Boolean  @default(true)
+
+  keywords      Keyword[]
+  businessPages BusinessPage[]
+
+  @@map("categories")
+}
+
+model Keyword {
+  id                String        @id @default(uuid())
+  name              String
+  slug              String        @unique
+  categoryId        String
+  category          Category      @relation(fields: [categoryId], references: [id])
+  status            KeywordStatus @default(PENDING)
+  source            KeywordSource @default(USER_SUBMITTED)
+  isNigeriaSpecific Boolean       @default(false)
+  usageCount        Int           @default(0)
+  createdAt         DateTime      @default(now())
+
+  businessKeywords  BusinessKeyword[]
+  sponsoredListings SponsoredListing[]
+
+  @@index([name])
+  @@map("keywords")
+}
+
+// ---------- Business pages ----------
+
+model BusinessPage {
+  id                   String              @id @default(uuid())
+  ownerUserId          String
+  owner                User                @relation(fields: [ownerUserId], references: [id])
+  name                 String
+  slug                 String              @unique
+  categoryId           String
+  category             Category            @relation(fields: [categoryId], references: [id])
+  description          String?
+  address              String?
+  city                 String?
+  state                String?
+  latitude             Float?
+  longitude            Float?
+  phone                String?
+  email                String?
+  website              String?
+  whatsapp             String?
+  hours                Json?
+  verificationStatus   VerificationStatus  @default(UNVERIFIED)
+  completenessScore    Int                 @default(0)
+  averageRating        Float               @default(0)
+  isClaimed            Boolean             @default(false)
+  isPublished          Boolean             @default(false)
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  businessKeywords     BusinessKeyword[]
+  posts                Post[]
+  follows              Follow[]
+  reviews              Review[]
+  media                Media[]
+  verificationRequests VerificationRequest[]
+  sponsoredListings    SponsoredListing[]
+  pageViews            PageView[]
+
+  @@index([city, state])
+  @@map("business_pages")
+}
+
+model BusinessKeyword {
+  businessPageId String
+  businessPage   BusinessPage @relation(fields: [businessPageId], references: [id])
+  keywordId      String
+  keyword        Keyword      @relation(fields: [keywordId], references: [id])
+
+  @@id([businessPageId, keywordId])
+  @@map("business_keywords")
+}
+
+// ---------- Social layer ----------
+
+model Post {
+  id              String       @id @default(uuid())
+  businessPageId  String
+  businessPage    BusinessPage @relation(fields: [businessPageId], references: [id])
+  authorUserId    String
+  author          User         @relation(fields: [authorUserId], references: [id])
+  content         String
+  mediaUrls       String[]
+  isHidden        Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@map("posts")
+}
+
+model Follow {
+  id              String       @id @default(uuid())
+  followerUserId  String
+  follower        User         @relation(fields: [followerUserId], references: [id])
+  businessPageId  String
+  businessPage    BusinessPage @relation(fields: [businessPageId], references: [id])
+  createdAt       DateTime     @default(now())
+
+  @@unique([followerUserId, businessPageId])
+  @@map("follows")
+}
+
+model Review {
+  id              String       @id @default(uuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id])
+  businessPageId  String
+  businessPage    BusinessPage @relation(fields: [businessPageId], references: [id])
+  rating          Int
+  body            String?
+  ownerResponse   String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@unique([userId, businessPageId])
+  @@map("reviews")
+}
+
+model Media {
+  id              String          @id @default(uuid())
+  entityType      MediaEntityType
+  businessPageId  String?
+  businessPage    BusinessPage?   @relation(fields: [businessPageId], references: [id])
+  url             String
+  mediaType       String
+  createdAt       DateTime        @default(now())
+
+  @@map("media")
+}
+
+// ---------- Trust & safety ----------
+
+model VerificationRequest {
+  id              String              @id @default(uuid())
+  businessPageId  String
+  businessPage    BusinessPage        @relation(fields: [businessPageId], references: [id])
+  cacNumber       String
+  documentUrls    String[]
+  status          VerificationStatus  @default(PENDING)
+  reviewedById    String?
+  reviewedBy      User?               @relation("ReviewedVerifications", fields: [reviewedById], references: [id])
+  reviewNotes     String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@map("verification_requests")
+}
+
+model Report {
+  id              String            @id @default(uuid())
+  reporterUserId  String
+  reporter        User              @relation("ReporterReports", fields: [reporterUserId], references: [id])
+  entityType      ReportEntityType
+  entityId        String
+  reason          String
+  status          ReportStatus      @default(OPEN)
+  resolvedById    String?
+  resolvedBy      User?             @relation("ResolvedReports", fields: [resolvedById], references: [id])
+  createdAt       DateTime          @default(now())
+  resolvedAt      DateTime?
+
+  @@map("reports")
+}
+
+// append-only — no admin, including Super Admin, may update or delete rows
+model AuditLog {
+  id           String   @id @default(uuid())
+  adminUserId  String
+  adminUser    User     @relation(fields: [adminUserId], references: [id])
+  action       String
+  entityType   String
+  entityId     String
+  reason       String?
+  metadata     Json?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+
+  @@map("audit_log")
+}
+
+// ---------- Monetisation ----------
+
+model SponsoredListing {
+  id              String        @id @default(uuid())
+  businessPageId  String
+  businessPage    BusinessPage  @relation(fields: [businessPageId], references: [id])
+  placementType   PlacementType
+  keywordId       String?
+  keyword         Keyword?      @relation(fields: [keywordId], references: [id])
+  city            String?
+  startDate       DateTime
+  endDate         DateTime
+  isActive        Boolean       @default(true)
+  priceNaira      Int
+  createdAt       DateTime      @default(now())
+
+  @@map("sponsored_listings")
+}
+
+// ---------- Notifications & analytics ----------
+
+model Notification {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  type        String
+  title       String
+  body        String?
+  isRead      Boolean  @default(false)
+  entityType  String?
+  entityId    String?
+  createdAt   DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model SearchQuery {
+  id          String   @id @default(uuid())
+  query       String
+  city        String?
+  state       String?
+  resultCount Int      @default(0)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@map("search_queries")
+}
+
+model PageView {
+  id              String       @id @default(uuid())
+  businessPageId  String
+  businessPage    BusinessPage @relation(fields: [businessPageId], references: [id])
+  userId          String?
+  user            User?        @relation(fields: [userId], references: [id])
+  ipHash          String?
+  source          String?
+  createdAt       DateTime     @default(now())
+
+  @@map("page_views")
+}
