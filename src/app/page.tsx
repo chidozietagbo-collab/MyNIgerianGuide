@@ -1,10 +1,6 @@
-import Navbar from "@/components/Navbar";
-
 export default function Home() {
   return (
     <main className="min-h-screen bg-ink-50">
-      <Navbar />
-
       <section className="mx-auto flex max-w-3xl flex-col items-center px-4 py-24 text-center">
         <span className="mb-4 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-green-600">
           Foundation in progress

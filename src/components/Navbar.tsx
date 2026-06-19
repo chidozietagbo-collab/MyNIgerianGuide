@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import Logo from "./Logo";
+import { createClient } from "@/lib/supabase/client";
 
 const navLinks = [
   { href: "/search", label: "Find a business" },
@@ -11,8 +13,21 @@ const navLinks = [
   { href: "/business/new", label: "List your business" },
 ];
 
-export default function Navbar() {
+type NavbarProps = {
+  user: { email: string } | null;
+};
+
+export default function Navbar({ user }: NavbarProps) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setOpen(false);
+    router.push("/");
+    router.refresh();
+  }
 
   return (
     <header className="border-b border-ink-100 bg-white">
@@ -34,18 +49,38 @@ export default function Navbar() {
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
-          <Link
-            href="/login"
-            className="text-sm font-medium text-ink-700 transition hover:text-green-600"
-          >
-            Log in
-          </Link>
-          <Link
-            href="/signup"
-            className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-500"
-          >
-            Sign up
-          </Link>
+          {user ? (
+            <>
+              <Link
+                href="/account"
+                className="text-sm font-medium text-ink-700 transition hover:text-green-600"
+              >
+                {user.email}
+              </Link>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-md border border-ink-100 px-4 py-2 text-sm font-semibold text-ink-700 transition hover:border-ink-300"
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="text-sm font-medium text-ink-700 transition hover:text-green-600"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-500"
+              >
+                Sign up
+              </Link>
+            </>
+          )}
         </div>
 
         <button
@@ -73,16 +108,37 @@ export default function Navbar() {
               </Link>
             ))}
             <hr className="border-ink-100" />
-            <Link href="/login" className="text-sm font-medium text-ink-700" onClick={() => setOpen(false)}>
-              Log in
-            </Link>
-            <Link
-              href="/signup"
-              className="rounded-md bg-green-600 px-4 py-2 text-center text-sm font-semibold text-white"
-              onClick={() => setOpen(false)}
-            >
-              Sign up
-            </Link>
+            {user ? (
+              <>
+                <Link
+                  href="/account"
+                  className="text-sm font-medium text-ink-700"
+                  onClick={() => setOpen(false)}
+                >
+                  {user.email}
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="rounded-md border border-ink-100 px-4 py-2 text-center text-sm font-semibold text-ink-700"
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <Link href="/login" className="text-sm font-medium text-ink-700" onClick={() => setOpen(false)}>
+                  Log in
+                </Link>
+                <Link
+                  href="/signup"
+                  className="rounded-md bg-green-600 px-4 py-2 text-center text-sm font-semibold text-white"
+                  onClick={() => setOpen(false)}
+                >
+                  Sign up
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}

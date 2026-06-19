@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Inter } from "next/font/google";
 import "./globals.css";
+import Navbar from "@/components/Navbar";
+import { createClient } from "@/lib/supabase/server";
 
 const display = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -32,14 +34,18 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   return (
     <html lang="en">
       <body className={`${display.variable} ${body.variable} font-body antialiased bg-ink-50 text-ink-700`}>
+        <Navbar user={user ? { email: user.email ?? "" } : null} />
         {children}
       </body>
     </html>

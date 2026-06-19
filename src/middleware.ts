@@ -2,12 +2,10 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 /**
- * Refreshes the Supabase auth session on every request. This must run in
+ * Refreshes the Supabase auth session on every request, and gates
+ * authenticated-only and signed-out-only routes. This must run in
  * middleware (not just in Server Components) because Server Components
  * cannot write cookies — only middleware and Route Handlers can.
- *
- * Route-level protection (redirecting signed-out users away from
- * authenticated pages) is added once the auth screens exist.
  */
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -34,7 +32,20 @@ export async function middleware(request: NextRequest) {
   // IMPORTANT: getUser() (not getSession()) actually validates the token
   // against Supabase rather than just reading the cookie — required for
   // the session to refresh reliably in the App Router.
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const path = request.nextUrl.pathname;
+  const requiresAuth = path.startsWith("/account") || path.startsWith("/welcome");
+  const signedOutOnly = path === "/login" || path === "/signup";
+
+  if (requiresAuth && !user) {
+    const redirectUrl = new URL("/login", request.url);
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  if (signedOutOnly && user) {
+    return NextResponse.redirect(new URL("/", request.url));
+  }
 
   return supabaseResponse;
 }
