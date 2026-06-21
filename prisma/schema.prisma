@@ -160,6 +160,7 @@ model State {
   slug String @unique
 
   localGovernments LocalGovernment[]
+  businessPages    BusinessPage[]
 
   @@map("states")
 }
@@ -171,7 +172,8 @@ model LocalGovernment {
   stateId String
   state   State  @relation(fields: [stateId], references: [id])
 
-  towns Town[]
+  towns         Town[]
+  businessPages BusinessPage[]
 
   @@unique([stateId, name])
   @@map("local_governments")
