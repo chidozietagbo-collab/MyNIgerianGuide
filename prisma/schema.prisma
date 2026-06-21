@@ -80,6 +80,17 @@ enum MediaEntityType {
   USER
 }
 
+enum LocationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LocationSource {
+  SEEDED
+  USER_SUBMITTED
+}
+
 // ---------- Core identity ----------
 
 // id is NOT auto-generated here — it is always set explicitly to match the
@@ -110,6 +121,7 @@ model User {
   searchQueries          SearchQuery[]
   pageViews              PageView[]
   auditLogs              AuditLog[]
+  submittedTowns         Town[]
   reportsFiled           Report[]               @relation("ReporterReports")
   reportsResolved        Report[]               @relation("ResolvedReports")
   verificationsReviewed  VerificationRequest[]  @relation("ReviewedVerifications")
@@ -129,6 +141,58 @@ model AdminUser {
   createdAt   DateTime  @default(now())
 
   @@map("admin_users")
+}
+
+// ---------- Location hierarchy ----------
+// Nigeria's real administrative structure: State -> Local Government Area ->
+// Town/City/Community. States and LGAs are fixed, government-defined, and
+// fully seeded (37 states/territories, 774 LGAs — verified complete).
+// Towns are open-ended — thousands exist nationwide and no single source
+// has them all, so this tier supports the same submit-and-review pattern
+// as Keyword: users can suggest a missing town, an admin approves it, and
+// it becomes permanently available to everyone. A handful of major cities
+// are seeded now; the rest grows organically as real users join from real
+// places.
+
+model State {
+  id   String @id @default(uuid())
+  name String @unique
+  slug String @unique
+
+  localGovernments LocalGovernment[]
+
+  @@map("states")
+}
+
+model LocalGovernment {
+  id      String @id @default(uuid())
+  name    String
+  slug    String
+  stateId String
+  state   State  @relation(fields: [stateId], references: [id])
+
+  towns Town[]
+
+  @@unique([stateId, name])
+  @@map("local_governments")
+}
+
+model Town {
+  id                String          @id @default(uuid())
+  name              String
+  slug              String
+  localGovernmentId String
+  localGovernment   LocalGovernment @relation(fields: [localGovernmentId], references: [id])
+  status            LocationStatus  @default(APPROVED)
+  source            LocationSource  @default(SEEDED)
+  submittedByUserId String?
+  submittedBy       User?           @relation(fields: [submittedByUserId], references: [id])
+  createdAt         DateTime        @default(now())
+
+  businessPages BusinessPage[]
+
+  @@unique([localGovernmentId, name])
+  @@map("towns")
 }
 
 // ---------- Taxonomy ----------
@@ -178,8 +242,12 @@ model BusinessPage {
   category             Category            @relation(fields: [categoryId], references: [id])
   description          String?
   address              String?
-  city                 String?
-  state                String?
+  stateId              String
+  state                State               @relation(fields: [stateId], references: [id])
+  localGovernmentId    String
+  localGovernment      LocalGovernment     @relation(fields: [localGovernmentId], references: [id])
+  townId               String
+  town                 Town                @relation(fields: [townId], references: [id])
   latitude             Float?
   longitude            Float?
   phone                String?
@@ -204,7 +272,7 @@ model BusinessPage {
   sponsoredListings    SponsoredListing[]
   pageViews            PageView[]
 
-  @@index([city, state])
+  @@index([stateId, localGovernmentId, townId])
   @@map("business_pages")
 }
 
