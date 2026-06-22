@@ -1,0 +1,176 @@
+import { notFound } from "next/navigation";
+import { BadgeCheck, Clock, Globe, Mail, MapPin, Phone } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+
+const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+type PageProps = {
+  params: Promise<{ slug: string }>;
+};
+
+export default async function BusinessPage({ params }: PageProps) {
+  const { slug } = await params;
+
+  const business = await prisma.businessPage.findUnique({
+    where: { slug },
+    include: {
+      category: { select: { name: true } },
+      state: { select: { name: true } },
+      localGovernment: { select: { name: true } },
+      town: { select: { name: true } },
+      businessKeywords: { include: { keyword: { select: { name: true } } } },
+    },
+  });
+
+  // Unpublished or nonexistent pages 404 — owners previewing their own
+  // unpublished page is a later refinement, not needed for the current flow
+  // since createBusinessPage always publishes immediately.
+  if (!business || !business.isPublished) {
+    notFound();
+  }
+
+  const initial = business.name.trim().charAt(0).toUpperCase() || "?";
+  const locationParts = [business.town?.name, business.localGovernment.name, business.state.name].filter(
+    Boolean
+  );
+  const hours = business.hours as Record<string, { open: string; close: string; closed: boolean }> | null;
+
+  return (
+    <main className="mx-auto max-w-3xl px-4 py-12">
+      {/* Header */}
+      <div className="flex items-start gap-4 rounded-lg border border-ink-100 bg-white p-6 shadow-sm">
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-green-600 font-display text-xl font-bold text-white">
+          {initial}
+        </span>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-xl font-bold text-ink-900">{business.name}</h1>
+            {business.verificationStatus === "VERIFIED" && (
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-600" title="Verified">
+                <BadgeCheck className="h-3.5 w-3.5 text-white" />
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-ink-500">
+            {locationParts.join(", ")} · {business.category.name}
+          </p>
+          {!business.isClaimed && (
+            <span className="mt-2 inline-block rounded-full bg-ink-100 px-3 py-1 text-xs font-semibold text-ink-500">
+              Unclaimed listing
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Description */}
+      {business.description && (
+        <section className="mt-6 rounded-lg border border-ink-100 bg-white p-6 shadow-sm">
+          <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-ink-300">About</h2>
+          <p className="mt-2 text-sm leading-relaxed text-ink-700">{business.description}</p>
+        </section>
+      )}
+
+      {/* Keywords */}
+      {business.businessKeywords.length > 0 && (
+        <section className="mt-6 rounded-lg border border-ink-100 bg-white p-6 shadow-sm">
+          <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-ink-300">
+            Services
+          </h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {business.businessKeywords.map(({ keyword }) => (
+              <span
+                key={keyword.name}
+                className="rounded-full bg-ink-100 px-3 py-1 text-xs font-medium text-ink-700"
+              >
+                {keyword.name}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Contact */}
+      <section className="mt-6 rounded-lg border border-ink-100 bg-white p-6 shadow-sm">
+        <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-ink-300">Contact</h2>
+        <div className="mt-3 space-y-2 text-sm text-ink-700">
+          {business.address && (
+            <p className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 shrink-0 text-ink-300" />
+              {business.address}
+            </p>
+          )}
+          {business.phone && (
+            <p className="flex items-center gap-2">
+              <Phone className="h-4 w-4 shrink-0 text-ink-300" />
+              <a href={`tel:${business.phone}`} className="hover:text-green-600">
+                {business.phone}
+              </a>
+            </p>
+          )}
+          {business.whatsapp && (
+            <p className="flex items-center gap-2">
+              <Phone className="h-4 w-4 shrink-0 text-ink-300" />
+              <a
+                href={`https://wa.me/${business.whatsapp.replace(/\D/g, "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-green-600"
+              >
+                WhatsApp: {business.whatsapp}
+              </a>
+            </p>
+          )}
+          {business.email && (
+            <p className="flex items-center gap-2">
+              <Mail className="h-4 w-4 shrink-0 text-ink-300" />
+              <a href={`mailto:${business.email}`} className="hover:text-green-600">
+                {business.email}
+              </a>
+            </p>
+          )}
+          {business.website && (
+            <p className="flex items-center gap-2">
+              <Globe className="h-4 w-4 shrink-0 text-ink-300" />
+              <a
+                href={business.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-green-600"
+              >
+                {business.website}
+              </a>
+            </p>
+          )}
+          {!business.address && !business.phone && !business.whatsapp && !business.email && !business.website && (
+            <p className="text-ink-300">No contact details added yet.</p>
+          )}
+        </div>
+      </section>
+
+      {/* Hours */}
+      {hours && (
+        <section className="mt-6 rounded-lg border border-ink-100 bg-white p-6 shadow-sm">
+          <h2 className="flex items-center gap-2 font-display text-sm font-semibold uppercase tracking-wide text-ink-300">
+            <Clock className="h-4 w-4" /> Opening hours
+          </h2>
+          <div className="mt-3 space-y-1 text-sm">
+            {DAY_ORDER.map((day) => {
+              const dayHours = hours[day];
+              if (!dayHours) return null;
+              return (
+                <div key={day} className="flex justify-between text-ink-700">
+                  <span className="font-medium">{day}</span>
+                  <span className="text-ink-500">
+                    {dayHours.closed ? "Closed" : `${dayHours.open} – ${dayHours.close}`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Posts / Reviews / Follow land here in Milestone 3 */}
+    </main>
+  );
+}
