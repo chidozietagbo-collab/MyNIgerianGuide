@@ -153,6 +153,11 @@ model AdminUser {
 // it becomes permanently available to everyone. A handful of major cities
 // are seeded now; the rest grows organically as real users join from real
 // places.
+//
+// townId on BusinessPage is intentionally OPTIONAL (see below) — only 10
+// towns are seeded nationwide against 774 LGAs, so requiring one would
+// block business creation in every LGA without a seeded town. State and
+// LGA remain required since both are fully and authoritatively seeded.
 
 model State {
   id   String @id @default(uuid())
@@ -229,6 +234,8 @@ model Keyword {
   sponsoredListings SponsoredListing[]
 
   @@index([name])
+  @@index([status])
+  @@index([usageCount])
   @@map("keywords")
 }
 
@@ -248,8 +255,8 @@ model BusinessPage {
   state                State               @relation(fields: [stateId], references: [id])
   localGovernmentId    String
   localGovernment      LocalGovernment     @relation(fields: [localGovernmentId], references: [id])
-  townId               String
-  town                 Town                @relation(fields: [townId], references: [id])
+  townId               String?
+  town                 Town?               @relation(fields: [townId], references: [id])
   latitude             Float?
   longitude            Float?
   phone                String?
