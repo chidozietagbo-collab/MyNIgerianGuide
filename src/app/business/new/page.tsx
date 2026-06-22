@@ -1,13 +1,43 @@
-import { Store } from "lucide-react";
-import ComingSoon from "@/components/ComingSoon";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
+import BusinessWizard from "@/components/BusinessWizard";
+import {
+  createBusinessPage,
+  getLocalGovernments,
+  getTowns,
+  submitNewTown,
+  searchKeywords,
+} from "./actions";
 
-export default function NewBusinessPage() {
+export default async function NewBusinessPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // The wizard creates a BusinessPage owned by the current user — there's
+  // no sensible anonymous path, so this mirrors the /account guard.
+  if (!user) {
+    redirect("/login");
+  }
+
+  const [states, categories] = await Promise.all([
+    prisma.state.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.category.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
+
   return (
-    <ComingSoon
-      icon={Store}
-      title="Business page setup is on its way"
-      description="The 7-step setup wizard for creating your business page is being built in Milestone 2. Your account is ready to go the moment it ships."
-      milestone="Milestone 2"
+    <BusinessWizard
+      states={states}
+      categories={categories}
+      getLocalGovernments={getLocalGovernments}
+      getTowns={getTowns}
+      submitNewTown={submitNewTown}
+      searchKeywords={searchKeywords}
+      createBusinessPage={createBusinessPage}
     />
   );
 }
