@@ -154,7 +154,7 @@ export async function createBusinessPage(input: CreateBusinessPageInput) {
       address: input.address?.trim() || null,
       stateId: input.stateId,
       localGovernmentId: input.localGovernmentId,
-      townId: input.townId || null,
+      townId: input.townId || undefined,
       phone: input.phone?.trim() || null,
       email: input.email?.trim() || null,
       website: input.website?.trim() || null,
