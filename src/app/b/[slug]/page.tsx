@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { BadgeCheck, Clock, Globe, Mail, MapPin, Phone } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
+import PhotoGallery from "@/components/PhotoGallery";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
@@ -19,6 +21,7 @@ export default async function BusinessPage({ params }: PageProps) {
       localGovernment: { select: { name: true } },
       town: { select: { name: true } },
       businessKeywords: { include: { keyword: { select: { name: true } } } },
+      media: { orderBy: { createdAt: "asc" }, select: { id: true, url: true } },
     },
   });
 
@@ -28,6 +31,10 @@ export default async function BusinessPage({ params }: PageProps) {
   if (!business || !business.isPublished) {
     notFound();
   }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const isOwner = user?.id === business.ownerUserId;
 
   const initial = business.name.trim().charAt(0).toUpperCase() || "?";
   const locationParts = [business.town?.name, business.localGovernment.name, business.state.name].filter(
@@ -69,6 +76,13 @@ export default async function BusinessPage({ params }: PageProps) {
           <p className="mt-2 text-sm leading-relaxed text-ink-700">{business.description}</p>
         </section>
       )}
+
+      {/* Photos */}
+      <PhotoGallery
+        businessPageId={business.id}
+        initialPhotos={business.media.map((m) => ({ id: m.id, url: m.url }))}
+        isOwner={isOwner}
+      />
 
       {/* Keywords */}
       {business.businessKeywords.length > 0 && (
