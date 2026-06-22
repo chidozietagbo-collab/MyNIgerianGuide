@@ -52,8 +52,8 @@ export async function deleteBusinessPhoto(mediaId: string) {
   }
 
   // Pull the storage object path out of the public URL so the file itself
-  // gets removed too, not just the Media row. Public URLs look like:
-  // https://<project>.supabase.co/storage/v1/object/public/business-photos/<path>
+  // gets removed too, not just the Media row. Public URLs follow the
+  // pattern https://PROJECT_REF.supabase.co/storage/v1/object/public/business-photos/PATH
   const marker = "/business-photos/";
   const idx = media.url.indexOf(marker);
   if (idx !== -1) {
