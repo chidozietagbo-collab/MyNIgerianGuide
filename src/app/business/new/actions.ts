@@ -160,6 +160,7 @@ export async function createBusinessPage(input: CreateBusinessPageInput) {
       website: input.website?.trim() || null,
       whatsapp: input.whatsapp?.trim() || null,
       hours: input.hours ?? undefined,
+      isClaimed: true,
       isPublished: true,
       businessKeywords: {
         create: input.keywordIds.map((keywordId) => ({ keywordId })),
@@ -169,4 +170,4 @@ export async function createBusinessPage(input: CreateBusinessPageInput) {
   });
 
   redirect(`/b/${businessPage.slug}`);
-}
+}h
