@@ -170,4 +170,4 @@ export async function createBusinessPage(input: CreateBusinessPageInput) {
   });
 
   redirect(`/b/${businessPage.slug}`);
-}h
+}
