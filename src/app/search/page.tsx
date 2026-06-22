@@ -1,16 +1,32 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Suspense, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { BadgeCheck, MapPin, Search as SearchIcon } from "lucide-react";
 import { searchBusinesses, type SearchResult } from "./actions";
 
 const inputClass =
   "w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500";
 
+// useSearchParams() requires a Suspense boundary in the App Router — the
+// page default-exports a thin wrapper, and the real component (with all
+// the state and the form) lives below as SearchPageInner.
 export default function SearchPage() {
-  const [keyword, setKeyword] = useState("");
-  const [location, setLocation] = useState("");
+  return (
+    <Suspense fallback={null}>
+      <SearchPageInner />
+    </Suspense>
+  );
+}
+
+function SearchPageInner() {
+  const searchParams = useSearchParams();
+  const initialKeyword = searchParams.get("keyword") ?? "";
+  const initialLocation = searchParams.get("location") ?? "";
+
+  const [keyword, setKeyword] = useState(initialKeyword);
+  const [location, setLocation] = useState(initialLocation);
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -21,6 +37,16 @@ export default function SearchPage() {
       setResults(data);
     });
   }
+
+  // Coming from the homepage hero search lands here with ?keyword=&location=
+  // already set — auto-run once on mount so results are there immediately,
+  // matching Journey 16.2 (search from hero, land directly on results).
+  useEffect(() => {
+    if (initialKeyword || initialLocation) {
+      runSearch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
