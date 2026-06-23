@@ -1,16 +1,31 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import AuthCard from "@/components/AuthCard";
 import { createClient } from "@/lib/supabase/client";
 
 const inputClass =
   "w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500";
 
+// useSearchParams() requires a Suspense boundary in the App Router.
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
+function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Where to send the person after a successful login. Falls back to home
+  // if they arrived here directly (e.g. via the navbar "Log in" link)
+  // rather than being sent here from a specific action like Follow.
+  const redirectTo = searchParams.get("redirect") || "/";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,7 +50,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/");
+    router.push(redirectTo);
     router.refresh();
   }
 
@@ -94,7 +109,10 @@ export default function LoginPage() {
 
       <p className="mt-6 text-center text-sm text-ink-500">
         New to MyNigerianGuide?{" "}
-        <Link href="/signup" className="font-medium text-green-600 hover:underline">
+        <Link
+          href={redirectTo !== "/" ? `/signup?redirect=${encodeURIComponent(redirectTo)}` : "/signup"}
+          className="font-medium text-green-600 hover:underline"
+        >
           Create an account
         </Link>
       </p>
