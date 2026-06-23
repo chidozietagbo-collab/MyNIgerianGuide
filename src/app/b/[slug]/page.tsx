@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import PhotoGallery from "@/components/PhotoGallery";
 import PostsSection from "@/components/PostsSection";
+import FollowButton from "@/components/FollowButton";
 import EditableHeader from "@/components/EditableHeader";
 import EditableAbout from "@/components/EditableAbout";
 import EditableContact from "@/components/EditableContact";
@@ -43,6 +44,15 @@ export default async function BusinessPage({ params }: PageProps) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const isOwner = user?.id === business.ownerUserId;
+
+  const [followerCount, currentUserFollow] = await Promise.all([
+    prisma.follow.count({ where: { businessPageId: business.id } }),
+    user
+      ? prisma.follow.findUnique({
+          where: { followerUserId_businessPageId: { followerUserId: user.id, businessPageId: business.id } },
+        })
+      : null,
+  ]);
 
   // Owner-only data needed for the inline edit forms — fetched only when
   // it'll actually be used, so a non-owner visiting the page doesn't pay
@@ -118,6 +128,14 @@ export default async function BusinessPage({ params }: PageProps) {
             </span>
           )}
         </div>
+        {!isOwner && (
+          <FollowButton
+            businessPageId={business.id}
+            initialIsFollowing={!!currentUserFollow}
+            followerCount={followerCount}
+            isSignedIn={!!user}
+          />
+        )}
       </div>
 
       {/* About */}
