@@ -3,6 +3,7 @@ import { BadgeCheck, Clock, Globe, Mail, MapPin, Phone } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import PhotoGallery from "@/components/PhotoGallery";
+import PostsSection from "@/components/PostsSection";
 import EditableHeader from "@/components/EditableHeader";
 import EditableAbout from "@/components/EditableAbout";
 import EditableContact from "@/components/EditableContact";
@@ -28,6 +29,10 @@ export default async function BusinessPage({ params }: PageProps) {
       town: { select: { name: true } },
       businessKeywords: { include: { keyword: { select: { id: true, name: true } } } },
       media: { orderBy: { createdAt: "asc" }, select: { id: true, url: true } },
+      posts: {
+        orderBy: { createdAt: "desc" },
+        select: { id: true, content: true, mediaUrls: true, createdAt: true, isHidden: true },
+      },
     },
   });
 
@@ -246,7 +251,21 @@ export default async function BusinessPage({ params }: PageProps) {
         )}
       </section>
 
-      {/* Posts / Reviews / Follow land here in Milestone 3 */}
+      {/* Updates / Posts */}
+      <PostsSection
+        businessPageId={business.id}
+        initialPosts={business.posts
+          .filter((p) => isOwner || !p.isHidden)
+          .map((p) => ({
+            id: p.id,
+            content: p.content,
+            mediaUrls: p.mediaUrls,
+            createdAt: p.createdAt.toISOString(),
+          }))}
+        isOwner={isOwner}
+      />
+
+      {/* Reviews / Follow land here next in Milestone 3 */}
 
       {isOwner && (
         <div className="mt-10 border-t border-ink-100 pt-6">
