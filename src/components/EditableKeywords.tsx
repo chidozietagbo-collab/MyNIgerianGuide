@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, X } from "lucide-react";
-import { updateBusinessKeywords, searchKeywordsForEdit } from "./actions";
+import { Loader2, Pencil, Plus, X } from "lucide-react";
+import { updateBusinessKeywords, searchKeywordsForEdit, submitNewKeywordForEdit } from "./actions";
 
 const inputClass =
   "w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500";
@@ -12,10 +12,11 @@ type KeywordOption = { id: string; name: string };
 
 type EditableKeywordsProps = {
   businessPageId: string;
+  categoryId: string;
   currentKeywords: KeywordOption[];
 };
 
-export default function EditableKeywords({ businessPageId, currentKeywords }: EditableKeywordsProps) {
+export default function EditableKeywords({ businessPageId, categoryId, currentKeywords }: EditableKeywordsProps) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -23,10 +24,11 @@ export default function EditableKeywords({ businessPageId, currentKeywords }: Ed
   const [selected, setSelected] = useState<KeywordOption[]>(currentKeywords);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<KeywordOption[]>([]);
+  const [addingKeyword, setAddingKeyword] = useState(false);
 
   async function handleSearch(value: string) {
     setQuery(value);
-    setResults(value.trim() ? await searchKeywordsForEdit(value) : []);
+    setResults(value.trim() ? await searchKeywordsForEdit(value, categoryId) : []);
   }
 
   function addKeyword(kw: KeywordOption) {
@@ -38,6 +40,19 @@ export default function EditableKeywords({ businessPageId, currentKeywords }: Ed
 
   function removeKeyword(id: string) {
     setSelected((prev) => prev.filter((k) => k.id !== id));
+  }
+
+  async function handleAddNewKeyword() {
+    if (!query.trim()) return;
+    setAddingKeyword(true);
+    try {
+      const kw = await submitNewKeywordForEdit(categoryId, query.trim());
+      addKeyword(kw);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't add that service.");
+    } finally {
+      setAddingKeyword(false);
+    }
   }
 
   async function handleSave() {
@@ -97,6 +112,17 @@ export default function EditableKeywords({ businessPageId, currentKeywords }: Ed
               </li>
             ))}
           </ul>
+        )}
+        {query.trim() && results.length === 0 && (
+          <button
+            type="button"
+            onClick={handleAddNewKeyword}
+            disabled={addingKeyword}
+            className="mt-1 flex w-full items-center gap-2 rounded-md border border-dashed border-ink-100 px-3 py-2 text-left text-sm text-green-600 transition hover:border-green-500 disabled:opacity-60"
+          >
+            {addingKeyword ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Add &ldquo;{query.trim()}&rdquo; as a new service
+          </button>
         )}
       </div>
 
