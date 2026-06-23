@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import AuthCard from "@/components/AuthCard";
 import { createClient } from "@/lib/supabase/client";
 
@@ -9,6 +10,22 @@ const inputClass =
   "w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500";
 
 export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupPageInner />
+    </Suspense>
+  );
+}
+
+function SignupPageInner() {
+  const searchParams = useSearchParams();
+  // If the person arrived here because of a specific action (e.g. clicking
+  // Follow while signed out), this carries them through signup and back
+  // to that exact page once they verify. Without it, /welcome is correct —
+  // that's the normal "what would you like to do first" screen for someone
+  // who signed up with no specific page in mind.
+  const redirectTo = searchParams.get("redirect");
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,7 +47,7 @@ export default function SignupPage() {
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/welcome`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo || "/welcome")}`,
       },
     });
     setLoading(false);
@@ -106,7 +123,10 @@ export default function SignupPage() {
 
       <p className="mt-6 text-center text-sm text-ink-500">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-green-600 hover:underline">
+        <Link
+          href={redirectTo ? `/login?redirect=${encodeURIComponent(redirectTo)}` : "/login"}
+          className="font-medium text-green-600 hover:underline"
+        >
           Log in
         </Link>
       </p>
