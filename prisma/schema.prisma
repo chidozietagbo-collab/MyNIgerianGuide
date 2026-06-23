@@ -122,6 +122,8 @@ model User {
   pageViews              PageView[]
   auditLogs              AuditLog[]
   submittedTowns         Town[]
+  submittedKeywords      Keyword[]              @relation("SubmittedKeywords")
+  submittedCategories    Category[]             @relation("SubmittedCategories")
   reportsFiled           Report[]               @relation("ReporterReports")
   reportsResolved        Report[]               @relation("ResolvedReports")
   verificationsReviewed  VerificationRequest[]  @relation("ReviewedVerifications")
@@ -204,13 +206,23 @@ model Town {
 
 // ---------- Taxonomy ----------
 
+// Categories are a small, curated top-level list (20 today) — seeded by
+// admin, but businesses can now propose a new one if theirs genuinely
+// doesn't fit. New submissions go in as PENDING/USER_SUBMITTED, usable
+// immediately on the submitting business's own page, and queued for admin
+// review at /admin/taxonomy-review — same submit-and-review pattern as
+// Town and Keyword.
 model Category {
-  id          String   @id @default(uuid())
-  name        String
-  slug        String   @unique
-  icon        String?
-  description String?
-  isActive    Boolean  @default(true)
+  id                String         @id @default(uuid())
+  name              String
+  slug              String         @unique
+  icon              String?
+  description       String?
+  isActive          Boolean        @default(true)
+  status            LocationStatus @default(APPROVED)
+  source            LocationSource @default(SEEDED)
+  submittedByUserId String?
+  submittedBy       User?          @relation("SubmittedCategories", fields: [submittedByUserId], references: [id])
 
   keywords      Keyword[]
   businessPages BusinessPage[]
@@ -228,6 +240,8 @@ model Keyword {
   source            KeywordSource @default(USER_SUBMITTED)
   isNigeriaSpecific Boolean       @default(false)
   usageCount        Int           @default(0)
+  submittedByUserId String?
+  submittedBy       User?         @relation("SubmittedKeywords", fields: [submittedByUserId], references: [id])
   createdAt         DateTime      @default(now())
 
   businessKeywords  BusinessKeyword[]
