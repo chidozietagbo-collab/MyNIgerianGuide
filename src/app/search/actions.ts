@@ -44,20 +44,35 @@ export async function searchBusinesses({
     where.verificationStatus = "VERIFIED";
   }
 
+  // A single search box should find a business either by what it's
+  // CALLED (its name) or by what it OFFERS (a tagged keyword/service) —
+  // previously this only checked keywords, so searching a real business
+  // name like "NewVic Sixth Form College" returned nothing even though
+  // the business genuinely exists. AND-ing this with the location OR
+  // below (rather than merging into one big OR) keeps "plumbing in Lagos"
+  // behaving correctly: both conditions must hold, even though each one
+  // internally is an "either/or" match.
   if (trimmedKeyword) {
-    where.businessKeywords = {
-      some: {
-        keyword: { name: { contains: trimmedKeyword, mode: "insensitive" } },
-      },
-    };
+    where.OR = [
+      { name: { contains: trimmedKeyword, mode: "insensitive" } },
+      { businessKeywords: { some: { keyword: { name: { contains: trimmedKeyword, mode: "insensitive" } } } } },
+    ];
   }
 
   if (trimmedLocation) {
-    where.OR = [
-      { state: { name: { contains: trimmedLocation, mode: "insensitive" } } },
-      { localGovernment: { name: { contains: trimmedLocation, mode: "insensitive" } } },
-      { town: { name: { contains: trimmedLocation, mode: "insensitive" } } },
-    ];
+    const locationFilter: Prisma.BusinessPageWhereInput = {
+      OR: [
+        { state: { name: { contains: trimmedLocation, mode: "insensitive" } } },
+        { localGovernment: { name: { contains: trimmedLocation, mode: "insensitive" } } },
+        { town: { name: { contains: trimmedLocation, mode: "insensitive" } } },
+      ],
+    };
+    // If a keyword search is also active, AND the two together via
+    // Prisma's implicit top-level AND (every key on `where` is ANDed).
+    // Putting the location OR under its own key (rather than overwriting
+    // where.OR from the keyword block above) means both conditions apply
+    // at once.
+    where.AND = [locationFilter];
   }
 
   const results = await prisma.businessPage.findMany({
@@ -92,4 +107,39 @@ export async function searchBusinesses({
     townName: b.town?.name ?? null,
     keywordNames: b.businessKeywords.map((bk) => bk.keyword.name),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Quick suggestions for "as you type" dropdowns (homepage hero + search
+// page). Deliberately small and fast: business name match only, top 5,
+// just enough to show "here's a real business matching what you typed"
+// before the person even hits Search.
+// ---------------------------------------------------------------------------
+export type BusinessSuggestion = {
+  id: string;
+  name: string;
+  slug: string;
+  stateName: string;
+};
+
+export async function suggestBusinesses(query: string): Promise<BusinessSuggestion[]> {
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
+  const results = await prisma.businessPage.findMany({
+    where: {
+      isPublished: true,
+      name: { contains: trimmed, mode: "insensitive" },
+    },
+    orderBy: [{ verificationStatus: "desc" }, { averageRating: "desc" }],
+    take: 5,
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      state: { select: { name: true } },
+    },
+  });
+
+  return results.map((b) => ({ id: b.id, name: b.name, slug: b.slug, stateName: b.state.name }));
 }
