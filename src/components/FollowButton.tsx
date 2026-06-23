@@ -7,6 +7,7 @@ import { toggleFollow } from "./follow-actions";
 
 type FollowButtonProps = {
   businessPageId: string;
+  businessSlug: string;
   initialIsFollowing: boolean;
   followerCount: number;
   isSignedIn: boolean;
@@ -14,6 +15,7 @@ type FollowButtonProps = {
 
 export default function FollowButton({
   businessPageId,
+  businessSlug,
   initialIsFollowing,
   followerCount,
   isSignedIn,
@@ -24,7 +26,11 @@ export default function FollowButton({
 
   function handleClick() {
     if (!isSignedIn) {
-      router.push("/login");
+      // Carry the current page along so login/signup can send the person
+      // right back here afterward, instead of always landing on the
+      // homepage or the generic "what would you like to do" screen.
+      const returnTo = encodeURIComponent(`/b/${businessSlug}`);
+      router.push(`/login?redirect=${returnTo}`);
       return;
     }
     setError(null);
