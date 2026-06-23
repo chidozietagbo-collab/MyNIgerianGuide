@@ -7,15 +7,15 @@ import {
   getLocalGovernments,
   getTowns,
   submitNewTown,
+  submitNewCategory,
   searchKeywords,
+  submitNewKeyword,
 } from "./actions";
 
 export default async function NewBusinessPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // The wizard creates a BusinessPage owned by the current user — there's
-  // no sensible anonymous path, so this mirrors the /account guard.
   if (!user) {
     redirect("/login");
   }
@@ -23,7 +23,7 @@ export default async function NewBusinessPage() {
   const [states, categories] = await Promise.all([
     prisma.state.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.category.findMany({
-      where: { isActive: true },
+      where: { isActive: true, status: "APPROVED" },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
@@ -36,7 +36,9 @@ export default async function NewBusinessPage() {
       getLocalGovernments={getLocalGovernments}
       getTowns={getTowns}
       submitNewTown={submitNewTown}
+      submitNewCategory={submitNewCategory}
       searchKeywords={searchKeywords}
+      submitNewKeyword={submitNewKeyword}
       createBusinessPage={createBusinessPage}
     />
   );
