@@ -45,7 +45,7 @@ export default async function BusinessPage({ params }: PageProps) {
   const [categories, states, initialLocalGovernments, initialTowns] = isOwner
     ? await Promise.all([
         prisma.category.findMany({
-          where: { isActive: true },
+          where: { isActive: true, status: "APPROVED" },
           orderBy: { name: "asc" },
           select: { id: true, name: true },
         }),
@@ -141,6 +141,7 @@ export default async function BusinessPage({ params }: PageProps) {
             {isOwner && (
               <EditableKeywords
                 businessPageId={business.id}
+                categoryId={business.categoryId}
                 currentKeywords={business.businessKeywords.map((bk) => bk.keyword)}
               />
             )}
