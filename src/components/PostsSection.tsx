@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Loader2, Pencil, Trash2, Upload, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -25,24 +26,15 @@ type PostsSectionProps = {
   isOwner: boolean;
 };
 
+// Posts are always rendered from initialPosts (server data). Every create,
+// edit, or delete calls router.refresh() afterward, which re-runs the
+// parent Server Component and passes fresh initialPosts back down — this
+// is simpler and more reliable than juggling a parallel client-side copy
+// of server state, which was the source of an earlier bug.
 export default function PostsSection({ businessPageId, initialPosts, isOwner }: PostsSectionProps) {
-  const [posts, setPosts] = useState(initialPosts);
   const [composing, setComposing] = useState(false);
 
-  function handleCreated(post: Post) {
-    setPosts((prev) => [post, ...prev]);
-    setComposing(false);
-  }
-
-  function handleUpdated(updated: Post) {
-    setPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-  }
-
-  function handleDeleted(postId: string) {
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
-  }
-
-  if (posts.length === 0 && !isOwner) {
+  if (initialPosts.length === 0 && !isOwner) {
     return null;
   }
 
@@ -64,24 +56,17 @@ export default function PostsSection({ businessPageId, initialPosts, isOwner }: 
       {composing && (
         <PostComposer
           businessPageId={businessPageId}
-          onCreated={handleCreated}
+          onDone={() => setComposing(false)}
           onCancel={() => setComposing(false)}
         />
       )}
 
-      {posts.length === 0 ? (
+      {initialPosts.length === 0 ? (
         <p className="mt-3 text-sm text-ink-300">No updates yet.</p>
       ) : (
         <div className="mt-4 space-y-4">
-          {posts.map((post) => (
-            <PostItem
-              key={post.id}
-              post={post}
-              businessPageId={businessPageId}
-              isOwner={isOwner}
-              onUpdated={handleUpdated}
-              onDeleted={handleDeleted}
-            />
+          {initialPosts.map((post) => (
+            <PostItem key={post.id} post={post} businessPageId={businessPageId} isOwner={isOwner} />
           ))}
         </div>
       )}
@@ -91,19 +76,20 @@ export default function PostsSection({ businessPageId, initialPosts, isOwner }: 
 
 function PostComposer({
   businessPageId,
-  onCreated,
+  onDone,
   onCancel,
   initialContent = "",
   initialMediaUrls = [],
   editingPostId,
 }: {
   businessPageId: string;
-  onCreated: (post: Post) => void;
+  onDone: () => void;
   onCancel: () => void;
   initialContent?: string;
   initialMediaUrls?: string[];
   editingPostId?: string;
 }) {
+  const router = useRouter();
   const [content, setContent] = useState(initialContent);
   const [mediaUrls, setMediaUrls] = useState<string[]>(initialMediaUrls);
   const [uploading, setUploading] = useState(false);
@@ -160,15 +146,11 @@ function PostComposer({
       try {
         if (editingPostId) {
           await updatePost(editingPostId, content, mediaUrls);
-          onCreated({ id: editingPostId, content: content.trim(), mediaUrls, createdAt: new Date().toISOString() });
         } else {
           await createPost(businessPageId, content, mediaUrls);
-          // The real id/createdAt come from the server; this optimistic
-          // placeholder is replaced on next page refresh/revalidate. Using
-          // a temporary id here is fine since revalidatePath triggers a
-          // server refetch that will reconcile it.
-          onCreated({ id: `temp-${Date.now()}`, content: content.trim(), mediaUrls, createdAt: new Date().toISOString() });
         }
+        router.refresh();
+        onDone();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't save this post.");
       }
@@ -245,15 +227,12 @@ function PostItem({
   post,
   businessPageId,
   isOwner,
-  onUpdated,
-  onDeleted,
 }: {
   post: Post;
   businessPageId: string;
   isOwner: boolean;
-  onUpdated: (post: Post) => void;
-  onDeleted: (postId: string) => void;
 }) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -264,7 +243,7 @@ function PostItem({
     startTransition(async () => {
       try {
         await deletePost(post.id);
-        onDeleted(post.id);
+        router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't delete this post.");
       }
@@ -278,10 +257,7 @@ function PostItem({
         editingPostId={post.id}
         initialContent={post.content}
         initialMediaUrls={post.mediaUrls}
-        onCreated={(updated) => {
-          onUpdated(updated);
-          setEditing(false);
-        }}
+        onDone={() => setEditing(false)}
         onCancel={() => setEditing(false)}
       />
     );
