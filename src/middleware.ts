@@ -44,7 +44,13 @@ export async function middleware(request: NextRequest) {
   }
 
   if (signedOutOnly && user) {
-    return NextResponse.redirect(new URL("/", request.url));
+    // Respect ?redirect= so an already-logged-in person who lands on
+    // /login or /signup (e.g. two tabs open, or clicking Follow with an
+    // active session) still ends up back where they were headed, instead
+    // of always being bounced to the homepage.
+    const redirectParam = request.nextUrl.searchParams.get("redirect");
+    const destination = redirectParam && redirectParam.startsWith("/") ? redirectParam : "/";
+    return NextResponse.redirect(new URL(destination, request.url));
   }
 
   return supabaseResponse;
