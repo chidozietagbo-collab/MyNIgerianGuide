@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BadgeCheck, MapPin, Search as SearchIcon } from "lucide-react";
-import { searchBusinesses, type SearchResult } from "./actions";
+import { searchBusinesses, suggestBusinesses, type SearchResult, type BusinessSuggestion } from "./actions";
 
 const inputClass =
   "w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500";
@@ -24,12 +24,15 @@ function SearchPageInner() {
   const searchParams = useSearchParams();
   const initialKeyword = searchParams.get("keyword") ?? "";
   const initialLocation = searchParams.get("location") ?? "";
+  const arrivedWithSearch = Boolean(initialKeyword || initialLocation);
 
   const [keyword, setKeyword] = useState(initialKeyword);
   const [location, setLocation] = useState(initialLocation);
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [suggestions, setSuggestions] = useState<BusinessSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   function runSearch() {
     startTransition(async () => {
@@ -42,14 +45,24 @@ function SearchPageInner() {
   // already set — auto-run once on mount so results are there immediately,
   // matching Journey 16.2 (search from hero, land directly on results).
   useEffect(() => {
-    if (initialKeyword || initialLocation) {
+    if (arrivedWithSearch) {
       runSearch();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function handleKeywordChange(value: string) {
+    setKeyword(value);
+    startTransition(async () => {
+      const data = await suggestBusinesses(value);
+      setSuggestions(data);
+      setShowSuggestions(data.length > 0);
+    });
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setShowSuggestions(false);
     runSearch();
   }
 
@@ -60,14 +73,34 @@ function SearchPageInner() {
 
       <form
         onSubmit={handleSubmit}
-        className="mt-6 flex flex-col gap-3 rounded-lg border border-ink-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center"
+        className="relative mt-6 flex flex-col gap-3 rounded-lg border border-ink-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center"
       >
-        <input
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          placeholder="Plumbers, hotels, lawyers…"
-          className={`${inputClass} sm:flex-1`}
-        />
+        <div className="relative sm:flex-1">
+          <input
+            value={keyword}
+            onChange={(e) => handleKeywordChange(e.target.value)}
+            onFocus={() => setShowSuggestions(suggestions.length > 0)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+            placeholder="Business name, plumbers, hotels…"
+            autoComplete="off"
+            className={inputClass}
+          />
+          {showSuggestions && (
+            <ul className="absolute left-0 top-full z-10 mt-1 w-full rounded-md border border-ink-100 bg-white shadow-lg">
+              {suggestions.map((s) => (
+                <li key={s.id}>
+                  <Link
+                    href={`/b/${s.slug}`}
+                    className="block px-4 py-2 text-left text-sm text-ink-700 hover:bg-green-50"
+                  >
+                    <span className="font-medium">{s.name}</span>
+                    <span className="ml-1.5 text-ink-300">— {s.stateName}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <div className="hidden h-6 w-px bg-ink-100 sm:block" />
         <input
           value={location}
@@ -107,11 +140,15 @@ function SearchPageInner() {
       </label>
 
       <div className="mt-8 space-y-4">
-        {results === null && !isPending && (
+        {results === null && !isPending && !arrivedWithSearch && (
           <p className="text-sm text-ink-300">Search above to see businesses.</p>
         )}
 
-        {isPending && <p className="text-sm text-ink-300">Searching…</p>}
+        {isPending && (
+          <p className="text-sm text-ink-300">
+            {arrivedWithSearch && results === null ? "Finding businesses for you…" : "Searching…"}
+          </p>
+        )}
 
         {results !== null && !isPending && results.length === 0 && (
           <div className="rounded-lg border border-ink-100 bg-white p-6 text-center shadow-sm">
