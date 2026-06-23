@@ -24,9 +24,6 @@ async function uniqueSlug(name: string): Promise<string> {
   let candidate = base;
   let suffix = 2;
 
-  // Loop guards against a name that's already taken — appends -2, -3, etc.
-  // until a free slug is found. Fine at current scale; revisit if this ever
-  // needs to handle high-concurrency creation of identically-named businesses.
   while (await prisma.businessPage.findUnique({ where: { slug: candidate } })) {
     candidate = `${base}-${suffix}`;
     suffix += 1;
@@ -36,10 +33,54 @@ async function uniqueSlug(name: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Location data for the wizard's dropdowns. States are fetched in the page
-// Server Component directly (no action needed — it's a plain read with no
-// user-specific scoping). These two are actions because they're called
-// client-side as the user picks a state, then an LGA.
+// Categories — the seeded list, plus any submission flow.
+// ---------------------------------------------------------------------------
+export async function getCategories() {
+  // isActive distinguishes "shown in the wizard dropdown" from soft-deleted;
+  // status distinguishes "admin-reviewed" from a pending user submission.
+  // A business's own pending submission should still be usable by THEM
+  // immediately (handled by passing it through directly in the wizard
+  // state, not by querying it back here) — this list is for the general
+  // dropdown, so PENDING items from other users are excluded until approved.
+  return prisma.category.findMany({
+    where: { isActive: true, status: "APPROVED" },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+}
+
+// A business doesn't see their category in the list. Submit it as PENDING/
+// USER_SUBMITTED — same pattern as submitNewTown — and return it so the
+// wizard can use it immediately for this business, while it queues for
+// admin review at /admin/taxonomy-review.
+export async function submitNewCategory(name: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Not signed in.");
+  }
+
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Category name is required.");
+  }
+
+  const category = await prisma.category.create({
+    data: {
+      name: trimmed,
+      slug: slugify(trimmed),
+      status: "PENDING",
+      source: "USER_SUBMITTED",
+      submittedByUserId: user.id,
+    },
+    select: { id: true, name: true },
+  });
+
+  return category;
+}
+
+// ---------------------------------------------------------------------------
+// Location data for the wizard's dropdowns.
 // ---------------------------------------------------------------------------
 export async function getLocalGovernments(stateId: string) {
   return prisma.localGovernment.findMany({
@@ -57,10 +98,6 @@ export async function getTowns(localGovernmentId: string) {
   });
 }
 
-// A user's town isn't in the list yet. Insert it as PENDING/USER_SUBMITTED
-// per the towns_insert RLS policy, then return its id so the wizard can use
-// it immediately — the business page doesn't need to wait for admin review,
-// the same pattern as keyword submission.
 export async function submitNewTown(localGovernmentId: string, name: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -89,15 +126,20 @@ export async function submitNewTown(localGovernmentId: string, name: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Keyword autocomplete — approved keywords only, most-used first, matching
-// the index added on keywords.status / keywords.usageCount.
+// Keyword autocomplete — approved keywords only, most-used first, NOW
+// SCOPED TO THE BUSINESS'S CHOSEN CATEGORY. Previously this searched all
+// approved keywords regardless of category, which let a business in
+// "Education & Training" tag itself with "Plumbing" — a real bug, since
+// Keyword.categoryId already existed and was simply never applied as a
+// filter here.
 // ---------------------------------------------------------------------------
-export async function searchKeywords(query: string) {
-  if (!query.trim()) return [];
+export async function searchKeywords(query: string, categoryId: string) {
+  if (!query.trim() || !categoryId) return [];
 
   return prisma.keyword.findMany({
     where: {
       status: "APPROVED",
+      categoryId,
       name: { contains: query, mode: "insensitive" },
     },
     orderBy: { usageCount: "desc" },
@@ -106,11 +148,41 @@ export async function searchKeywords(query: string) {
   });
 }
 
+// A business searches within their category and doesn't find their
+// service. Submit it as PENDING/USER_SUBMITTED, tied to their category —
+// usable immediately on their own business, queued for admin review.
+export async function submitNewKeyword(categoryId: string, name: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Not signed in.");
+  }
+
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Service name is required.");
+  }
+  if (!categoryId) {
+    throw new Error("Select a category before adding a new service.");
+  }
+
+  const keyword = await prisma.keyword.create({
+    data: {
+      name: trimmed,
+      slug: slugify(trimmed),
+      categoryId,
+      status: "PENDING",
+      source: "USER_SUBMITTED",
+      submittedByUserId: user.id,
+    },
+    select: { id: true, name: true, categoryId: true },
+  });
+
+  return keyword;
+}
+
 // ---------------------------------------------------------------------------
-// Final submit. Creates the BusinessPage row plus its BusinessKeyword join
-// rows in one transaction, then redirects to the new public page.
-// townId is optional per the schema change — a business can publish with
-// just state + LGA if their town isn't listed yet.
+// Final submit.
 // ---------------------------------------------------------------------------
 type CreateBusinessPageInput = {
   name: string;
