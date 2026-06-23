@@ -113,7 +113,7 @@ export async function updateBusinessHeader(input: UpdateHeaderInput) {
 
   const current = await prisma.businessPage.findUnique({
     where: { id: input.businessPageId },
-    select: { name: true, slug: true },
+    select: { name: true, slug: true, categoryId: true },
   });
 
   let slug = current!.slug;
@@ -131,23 +131,30 @@ export async function updateBusinessHeader(input: UpdateHeaderInput) {
     slug = candidate;
   }
 
-  await prisma.businessPage.update({
-    where: { id: input.businessPageId },
-    data: {
-      name: input.name.trim(),
-      slug,
-      categoryId: input.categoryId,
-      stateId: input.stateId,
-      localGovernmentId: input.localGovernmentId,
-      townId: input.townId || undefined,
-    },
-  });
+  const categoryChanged = current!.categoryId !== input.categoryId;
+
+  await prisma.$transaction([
+    ...(categoryChanged
+      ? [prisma.businessKeyword.deleteMany({ where: { businessPageId: input.businessPageId } })]
+      : []),
+    prisma.businessPage.update({
+      where: { id: input.businessPageId },
+      data: {
+        name: input.name.trim(),
+        slug,
+        categoryId: input.categoryId,
+        stateId: input.stateId,
+        localGovernmentId: input.localGovernmentId,
+        townId: input.townId || undefined,
+      },
+    }),
+  ]);
 
   revalidatePath(`/b/${business.slug}`);
   if (slug !== business.slug) {
     revalidatePath(`/b/${slug}`);
   }
-  return { slug };
+  return { slug, categoryChanged };
 }
 
 // ===========================================================================
@@ -230,16 +237,83 @@ export async function updateBusinessKeywords(businessPageId: string, keywordIds:
   revalidatePath(`/b/${business.slug}`);
 }
 
-export async function searchKeywordsForEdit(query: string) {
-  if (!query.trim()) return [];
+export async function searchKeywordsForEdit(query: string, categoryId: string) {
+  if (!query.trim() || !categoryId) return [];
 
   return prisma.keyword.findMany({
     where: {
       status: "APPROVED",
+      categoryId,
       name: { contains: query, mode: "insensitive" },
     },
     orderBy: { usageCount: "desc" },
     take: 10,
+    select: { id: true, name: true },
+  });
+}
+
+export async function submitNewKeywordForEdit(categoryId: string, name: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Not signed in.");
+  }
+
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Service name is required.");
+  }
+
+  const base = trimmed
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+
+  return prisma.keyword.create({
+    data: {
+      name: trimmed,
+      slug: base,
+      categoryId,
+      status: "PENDING",
+      source: "USER_SUBMITTED",
+      submittedByUserId: user.id,
+    },
+    select: { id: true, name: true },
+  });
+}
+
+// ===========================================================================
+// CATEGORY SUBMISSION (edit flow — same pattern as the wizard's submitNewCategory)
+// ===========================================================================
+export async function submitNewCategoryForEdit(name: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Not signed in.");
+  }
+
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Category name is required.");
+  }
+
+  const base = trimmed
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+
+  return prisma.category.create({
+    data: {
+      name: trimmed,
+      slug: base,
+      status: "PENDING",
+      source: "USER_SUBMITTED",
+      submittedByUserId: user.id,
+    },
     select: { id: true, name: true },
   });
 }
