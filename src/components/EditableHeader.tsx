@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, X } from "lucide-react";
+import { Loader2, Pencil, Plus, X } from "lucide-react";
 import {
   updateBusinessHeader,
   getLocalGovernmentsForEdit,
   getTownsForEdit,
+  submitNewCategoryForEdit,
 } from "./actions";
 
 const inputClass =
@@ -34,7 +35,7 @@ export default function EditableHeader({
   currentStateId,
   currentLocalGovernmentId,
   currentTownId,
-  categories,
+  categories: initialCategories,
   states,
   initialLocalGovernments,
   initialTowns,
@@ -45,12 +46,30 @@ export default function EditableHeader({
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState(currentName);
+  const [categories, setCategories] = useState(initialCategories);
   const [categoryId, setCategoryId] = useState(currentCategoryId);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [addingCategory, setAddingCategory] = useState(false);
   const [stateId, setStateId] = useState(currentStateId);
   const [localGovernmentId, setLocalGovernmentId] = useState(currentLocalGovernmentId);
   const [townId, setTownId] = useState(currentTownId ?? "");
   const [localGovernments, setLocalGovernments] = useState(initialLocalGovernments);
   const [towns, setTowns] = useState(initialTowns);
+
+  async function handleAddCategory() {
+    if (!newCategoryName.trim()) return;
+    setAddingCategory(true);
+    try {
+      const category = await submitNewCategoryForEdit(newCategoryName.trim());
+      setCategories((prev) => [...prev, category]);
+      setCategoryId(category.id);
+      setNewCategoryName("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't add that category.");
+    } finally {
+      setAddingCategory(false);
+    }
+  }
 
   async function handleStateChange(newStateId: string) {
     setStateId(newStateId);
@@ -72,6 +91,12 @@ export default function EditableHeader({
       setError("Name, category, state, and local government are required.");
       return;
     }
+    if (categoryId !== currentCategoryId) {
+      const confirmed = window.confirm(
+        "Changing category will clear your current services/keywords, since they're specific to the old category. Continue?"
+      );
+      if (!confirmed) return;
+    }
     setSaving(true);
     try {
       const result = await updateBusinessHeader({
@@ -84,8 +109,6 @@ export default function EditableHeader({
       });
       setEditing(false);
       router.refresh();
-      // If the slug changed (name changed), navigate to the new URL so the
-      // address bar and any bookmark stays correct.
       if (result.slug) {
         router.push(`/b/${result.slug}`);
       }
@@ -122,12 +145,30 @@ export default function EditableHeader({
 
       <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} placeholder="Business name" />
 
-      <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
-        <option value="">Select a category</option>
-        {categories.map((c) => (
-          <option key={c.id} value={c.id}>{c.name}</option>
-        ))}
-      </select>
+      <div>
+        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className={inputClass}>
+          <option value="">Select a category</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+        <div className="mt-2 flex gap-2">
+          <input
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            placeholder="Don't see your category? Add it"
+            className={inputClass}
+          />
+          <button
+            type="button"
+            onClick={handleAddCategory}
+            disabled={addingCategory || !newCategoryName.trim()}
+            className="shrink-0 rounded-md border border-ink-100 px-3 py-2 text-sm font-semibold text-ink-700 transition hover:border-ink-300 disabled:opacity-60"
+          >
+            {addingCategory ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          </button>
+        </div>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <select value={stateId} onChange={(e) => handleStateChange(e.target.value)} className={inputClass}>
