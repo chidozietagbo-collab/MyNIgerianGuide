@@ -131,6 +131,7 @@ export default async function BusinessPage({ params }: PageProps) {
         {!isOwner && (
           <FollowButton
             businessPageId={business.id}
+            businessSlug={business.slug}
             initialIsFollowing={!!currentUserFollow}
             followerCount={followerCount}
             isSignedIn={!!user}
