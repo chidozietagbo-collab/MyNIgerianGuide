@@ -76,7 +76,14 @@ export default function HeroSearch() {
             <li key={s.id}>
               <button
                 type="button"
-                onClick={() => handleSuggestionClick(s)}
+                // onMouseDown (not onClick) fires BEFORE the input's onBlur,
+                // so the dropdown doesn't disappear out from under the
+                // click before it registers. preventDefault stops the
+                // input from losing focus at all during this interaction.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleSuggestionClick(s);
+                }}
                 className="block w-full px-4 py-2 text-left text-sm text-ink-700 hover:bg-green-50"
               >
                 <span className="font-medium">{s.name}</span>
