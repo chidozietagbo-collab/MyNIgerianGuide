@@ -89,13 +89,21 @@ function SearchPageInner() {
             <ul className="absolute left-0 top-full z-10 mt-1 w-full rounded-md border border-ink-100 bg-white shadow-lg">
               {suggestions.map((s) => (
                 <li key={s.id}>
-                  <Link
-                    href={`/b/${s.slug}`}
-                    className="block px-4 py-2 text-left text-sm text-ink-700 hover:bg-green-50"
+                  <button
+                    type="button"
+                    // onMouseDown (not onClick/Link navigation) fires
+                    // before the input's onBlur, so the dropdown doesn't
+                    // vanish before the click registers.
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setShowSuggestions(false);
+                      router.push(`/b/${s.slug}`);
+                    }}
+                    className="block w-full px-4 py-2 text-left text-sm text-ink-700 hover:bg-green-50"
                   >
                     <span className="font-medium">{s.name}</span>
                     <span className="ml-1.5 text-ink-300">— {s.stateName}</span>
-                  </Link>
+                  </button>
                 </li>
               ))}
             </ul>
