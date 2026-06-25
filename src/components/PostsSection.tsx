@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Heart, Loader2, MessageCircle, Pencil, Trash2, Upload, X } from "lucide-react";
+import { Heart, Loader2, MessageCircle, Pencil, Share2, Trash2, Upload, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { createPost, updatePost, deletePost } from "./post-actions";
 import { addComment, updateComment, deleteComment, toggleLike } from "./comment-actions";
@@ -34,6 +34,7 @@ type Post = {
 
 type PostsSectionProps = {
   businessPageId: string;
+  businessSlug: string;
   initialPosts: Post[];
   isOwner: boolean;
   currentUserId: string | null;
@@ -47,6 +48,7 @@ type PostsSectionProps = {
 // of server state, which was the source of an earlier bug.
 export default function PostsSection({
   businessPageId,
+  businessSlug,
   initialPosts,
   isOwner,
   currentUserId,
@@ -90,6 +92,7 @@ export default function PostsSection({
               key={post.id}
               post={post}
               businessPageId={businessPageId}
+              businessSlug={businessSlug}
               isOwner={isOwner}
               currentUserId={currentUserId}
               isSignedIn={isSignedIn}
@@ -253,12 +256,14 @@ function PostComposer({
 function PostItem({
   post,
   businessPageId,
+  businessSlug,
   isOwner,
   currentUserId,
   isSignedIn,
 }: {
   post: Post;
   businessPageId: string;
+  businessSlug: string;
   isOwner: boolean;
   currentUserId: string | null;
   isSignedIn: boolean;
@@ -277,6 +282,31 @@ function PostItem({
   const [optimisticCount, setOptimisticCount] = useState(post.likeCount);
 
   const [showComments, setShowComments] = useState(false);
+
+  const [shareCopied, setShareCopied] = useState(false);
+  const [highlighted, setHighlighted] = useState(false);
+  const postRef = useRef<HTMLDivElement>(null);
+
+  // If someone arrives via a shared link (e.g. /b/slug#post-123), scroll
+  // to this exact post and briefly highlight it so it's obvious which
+  // post the link was about, rather than landing on a long page of posts
+  // with no indication of which one was shared.
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === `#post-${post.id}`) {
+      postRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlighted(true);
+      const timer = setTimeout(() => setHighlighted(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [post.id]);
+
+  function handleShareClick() {
+    const url = `${window.location.origin}/b/${businessSlug}#post-${post.id}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    });
+  }
 
   function handleDelete() {
     setError(null);
@@ -324,7 +354,13 @@ function PostItem({
   }
 
   return (
-    <div className="rounded-md border border-ink-100 p-4">
+    <div
+      ref={postRef}
+      id={`post-${post.id}`}
+      className={`rounded-md border p-4 transition-colors duration-700 ${
+        highlighted ? "border-green-500 bg-green-50" : "border-ink-100"
+      }`}
+    >
       <div className="flex items-start justify-between">
         <p className="text-xs text-ink-300">
           {new Date(post.createdAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
@@ -392,6 +428,14 @@ function PostItem({
           <MessageCircle className="h-4 w-4" />
           {post.comments.length > 0 ? post.comments.length : ""}{" "}
           {post.comments.length === 1 ? "Comment" : "Comments"}
+        </button>
+        <button
+          type="button"
+          onClick={handleShareClick}
+          className="flex items-center gap-1.5 text-sm font-medium text-ink-500 transition hover:text-green-600"
+        >
+          <Share2 className="h-4 w-4" />
+          {shareCopied ? "Copied!" : "Share"}
         </button>
       </div>
 
