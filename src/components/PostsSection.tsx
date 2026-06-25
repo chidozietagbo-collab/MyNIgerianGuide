@@ -3,9 +3,10 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Loader2, Pencil, Trash2, Upload, X } from "lucide-react";
+import { Heart, Loader2, MessageCircle, Pencil, Trash2, Upload, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { createPost, updatePost, deletePost } from "./post-actions";
+import { addComment, updateComment, deleteComment, toggleLike } from "./comment-actions";
 
 const inputClass =
   "w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500";
@@ -13,17 +14,30 @@ const inputClass =
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
+type CommentType = {
+  id: string;
+  authorUserId: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+};
+
 type Post = {
   id: string;
   content: string;
   mediaUrls: string[];
   createdAt: string;
+  likeCount: number;
+  isLiked: boolean;
+  comments: CommentType[];
 };
 
 type PostsSectionProps = {
   businessPageId: string;
   initialPosts: Post[];
   isOwner: boolean;
+  currentUserId: string | null;
+  isSignedIn: boolean;
 };
 
 // Posts are always rendered from initialPosts (server data). Every create,
@@ -31,7 +45,13 @@ type PostsSectionProps = {
 // parent Server Component and passes fresh initialPosts back down — this
 // is simpler and more reliable than juggling a parallel client-side copy
 // of server state, which was the source of an earlier bug.
-export default function PostsSection({ businessPageId, initialPosts, isOwner }: PostsSectionProps) {
+export default function PostsSection({
+  businessPageId,
+  initialPosts,
+  isOwner,
+  currentUserId,
+  isSignedIn,
+}: PostsSectionProps) {
   const [composing, setComposing] = useState(false);
 
   if (initialPosts.length === 0 && !isOwner) {
@@ -66,7 +86,14 @@ export default function PostsSection({ businessPageId, initialPosts, isOwner }: 
       ) : (
         <div className="mt-4 space-y-4">
           {initialPosts.map((post) => (
-            <PostItem key={post.id} post={post} businessPageId={businessPageId} isOwner={isOwner} />
+            <PostItem
+              key={post.id}
+              post={post}
+              businessPageId={businessPageId}
+              isOwner={isOwner}
+              currentUserId={currentUserId}
+              isSignedIn={isSignedIn}
+            />
           ))}
         </div>
       )}
@@ -227,16 +254,29 @@ function PostItem({
   post,
   businessPageId,
   isOwner,
+  currentUserId,
+  isSignedIn,
 }: {
   post: Post;
   businessPageId: string;
   isOwner: boolean;
+  currentUserId: string | null;
+  isSignedIn: boolean;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // Like button: optimistic toggle on the button's own appearance only —
+  // the actual count still comes from the server on next refresh, this
+  // just avoids a visible delay on the click itself.
+  const [liking, startLikeTransition] = useTransition();
+  const [optimisticLiked, setOptimisticLiked] = useState(post.isLiked);
+  const [optimisticCount, setOptimisticCount] = useState(post.likeCount);
+
+  const [showComments, setShowComments] = useState(false);
 
   function handleDelete() {
     setError(null);
@@ -246,6 +286,26 @@ function PostItem({
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't delete this post.");
+      }
+    });
+  }
+
+  function handleLikeClick() {
+    if (!isSignedIn) {
+      router.push("/login");
+      return;
+    }
+    const nextLiked = !optimisticLiked;
+    setOptimisticLiked(nextLiked);
+    setOptimisticCount((c) => (nextLiked ? c + 1 : Math.max(0, c - 1)));
+    startLikeTransition(async () => {
+      try {
+        await toggleLike(post.id);
+        router.refresh();
+      } catch {
+        // Revert optimistic state on failure.
+        setOptimisticLiked(!nextLiked);
+        setOptimisticCount(post.likeCount);
       }
     });
   }
@@ -296,7 +356,9 @@ function PostItem({
           </div>
         )}
       </div>
+
       <p className="mt-2 whitespace-pre-wrap text-sm text-ink-700">{post.content}</p>
+
       {post.mediaUrls.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {post.mediaUrls.map((url) => (
@@ -306,7 +368,197 @@ function PostItem({
           ))}
         </div>
       )}
+
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+
+      {/* Like / comment toggle row */}
+      <div className="mt-3 flex items-center gap-4 border-t border-ink-100 pt-3">
+        <button
+          type="button"
+          onClick={handleLikeClick}
+          disabled={liking}
+          className={`flex items-center gap-1.5 text-sm font-medium transition disabled:opacity-60 ${
+            optimisticLiked ? "text-danger" : "text-ink-500 hover:text-danger"
+          }`}
+        >
+          <Heart className={`h-4 w-4 ${optimisticLiked ? "fill-danger" : ""}`} />
+          {optimisticCount > 0 ? optimisticCount : ""} {optimisticCount === 1 ? "Like" : "Likes"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowComments((v) => !v)}
+          className="flex items-center gap-1.5 text-sm font-medium text-ink-500 transition hover:text-green-600"
+        >
+          <MessageCircle className="h-4 w-4" />
+          {post.comments.length > 0 ? post.comments.length : ""}{" "}
+          {post.comments.length === 1 ? "Comment" : "Comments"}
+        </button>
+      </div>
+
+      {showComments && (
+        <CommentsBlock
+          postId={post.id}
+          comments={post.comments}
+          isOwner={isOwner}
+          currentUserId={currentUserId}
+          isSignedIn={isSignedIn}
+        />
+      )}
+    </div>
+  );
+}
+
+function CommentsBlock({
+  postId,
+  comments,
+  isOwner,
+  currentUserId,
+  isSignedIn,
+}: {
+  postId: string;
+  comments: CommentType[];
+  isOwner: boolean;
+  currentUserId: string | null;
+  isSignedIn: boolean;
+}) {
+  const router = useRouter();
+  const [newComment, setNewComment] = useState("");
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function handleAdd() {
+    if (!isSignedIn) {
+      router.push("/login");
+      return;
+    }
+    if (!newComment.trim()) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        await addComment(postId, newComment);
+        setNewComment("");
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't post your comment.");
+      }
+    });
+  }
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-ink-100 pt-3">
+      {comments.length === 0 ? (
+        <p className="text-sm text-ink-300">No comments yet.</p>
+      ) : (
+        comments.map((comment) => (
+          <CommentItem
+            key={comment.id}
+            comment={comment}
+            canDelete={isOwner || comment.authorUserId === currentUserId}
+            canEdit={comment.authorUserId === currentUserId}
+          />
+        ))
+      )}
+
+      <div className="flex items-center gap-2">
+        <input
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          placeholder={isSignedIn ? "Write a comment…" : "Sign in to comment"}
+          className={inputClass}
+        />
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={isPending}
+          className="shrink-0 rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-500 disabled:opacity-60"
+        >
+          Post
+        </button>
+      </div>
+      {error && <p className="text-sm text-danger">{error}</p>}
+    </div>
+  );
+}
+
+function CommentItem({
+  comment,
+  canDelete,
+  canEdit,
+}: {
+  comment: CommentType;
+  canDelete: boolean;
+  canEdit: boolean;
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [content, setContent] = useState(comment.content);
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSave() {
+    if (!content.trim()) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        await updateComment(comment.id, content);
+        setEditing(false);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't save your comment.");
+      }
+    });
+  }
+
+  function handleDelete() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        await deleteComment(comment.id);
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Couldn't delete this comment.");
+      }
+    });
+  }
+
+  return (
+    <div className="rounded-md bg-ink-50 p-3">
+      <div className="flex items-start justify-between">
+        <p className="text-xs font-semibold text-ink-700">{comment.authorName}</p>
+        <div className="flex items-center gap-2">
+          {canEdit && !editing && (
+            <button type="button" onClick={() => setEditing(true)} aria-label="Edit comment" className="text-ink-300 hover:text-green-600">
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+          {canDelete && (
+            <button type="button" onClick={handleDelete} disabled={isPending} aria-label="Delete comment" className="text-ink-300 hover:text-danger">
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+      {editing ? (
+        <div className="mt-1 space-y-2">
+          <input value={content} onChange={(e) => setContent(e.target.value)} className={inputClass} />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={isPending}
+              className="rounded-md bg-green-600 px-3 py-1 text-xs font-semibold text-white"
+            >
+              Save
+            </button>
+            <button type="button" onClick={() => setEditing(false)} className="text-xs text-ink-500">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-1 text-sm text-ink-700">{comment.content}</p>
+      )}
+      {error && <p className="mt-1 text-xs text-danger">{error}</p>}
     </div>
   );
 }
