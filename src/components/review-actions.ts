@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { createNotification } from "./create-notification";
 
 async function recalculateAverageRating(businessPageId: string) {
   const result = await prisma.review.aggregate({
@@ -35,7 +36,7 @@ export async function createReview(businessPageId: string, rating: number, body:
 
   const business = await prisma.businessPage.findUnique({
     where: { id: businessPageId },
-    select: { slug: true, ownerUserId: true },
+    select: { slug: true, name: true, ownerUserId: true },
   });
   if (!business) {
     throw new Error("Business not found.");
@@ -64,6 +65,21 @@ export async function createReview(businessPageId: string, rating: number, body:
   });
 
   await recalculateAverageRating(businessPageId);
+
+  const reviewer = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { name: true, email: true },
+  });
+  const reviewerName = reviewer?.name || reviewer?.email.split("@")[0] || "Someone";
+
+  await createNotification({
+    userId: business.ownerUserId,
+    type: "NEW_REVIEW",
+    title: `${reviewerName} left a ${rating}-star review on ${business.name}`,
+    entityType: "BUSINESS_PAGE",
+    entityId: businessPageId,
+  });
+
   revalidatePath(`/b/${business.slug}`);
 }
 
@@ -121,7 +137,7 @@ export async function replyToReview(reviewId: string, response: string) {
 
   const review = await prisma.review.findUnique({
     where: { id: reviewId },
-    select: { businessPage: { select: { id: true, slug: true, ownerUserId: true } } },
+    select: { userId: true, businessPage: { select: { id: true, slug: true, ownerUserId: true, name: true } } },
   });
   if (!review || review.businessPage.ownerUserId !== user.id) {
     throw new Error("You don't own this business page.");
@@ -135,6 +151,14 @@ export async function replyToReview(reviewId: string, response: string) {
   await prisma.review.update({
     where: { id: reviewId },
     data: { ownerResponse: trimmed },
+  });
+
+  await createNotification({
+    userId: review.userId,
+    type: "REVIEW_REPLY",
+    title: `${review.businessPage.name} replied to your review`,
+    entityType: "BUSINESS_PAGE",
+    entityId: review.businessPage.id,
   });
 
   revalidatePath(`/b/${review.businessPage.slug}`);
