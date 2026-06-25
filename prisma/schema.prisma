@@ -1,6 +1,6 @@
 // MyNigerianGuide — Core Database Schema
 // Source: Product & Technical Brief v3.0, Section 19
-// 17 entities. Table names are snake_case via @@map; fields stay camelCase
+// Table names are snake_case via @@map; fields stay camelCase
 // (Prisma convention) so generated client code reads naturally.
 
 generator client {
@@ -93,10 +93,6 @@ enum LocationSource {
 
 // ---------- Core identity ----------
 
-// id is NOT auto-generated here — it is always set explicitly to match the
-// corresponding auth.users.id from Supabase Auth (see the on_auth_user_created
-// trigger set up in Step 3). Personal Account is the root identity per
-// Brief section 3.4.
 model User {
   id            String        @id
   email         String        @unique
@@ -117,6 +113,8 @@ model User {
   posts                  Post[]
   follows                Follow[]
   reviews                Review[]
+  comments               Comment[]
+  postLikes              PostLike[]
   notifications          Notification[]
   searchQueries          SearchQuery[]
   pageViews              PageView[]
@@ -146,20 +144,6 @@ model AdminUser {
 }
 
 // ---------- Location hierarchy ----------
-// Nigeria's real administrative structure: State -> Local Government Area ->
-// Town/City/Community. States and LGAs are fixed, government-defined, and
-// fully seeded (37 states/territories, 774 LGAs — verified complete).
-// Towns are open-ended — thousands exist nationwide and no single source
-// has them all, so this tier supports the same submit-and-review pattern
-// as Keyword: users can suggest a missing town, an admin approves it, and
-// it becomes permanently available to everyone. A handful of major cities
-// are seeded now; the rest grows organically as real users join from real
-// places.
-//
-// townId on BusinessPage is intentionally OPTIONAL (see below) — only 10
-// towns are seeded nationwide against 774 LGAs, so requiring one would
-// block business creation in every LGA without a seeded town. State and
-// LGA remain required since both are fully and authoritatively seeded.
 
 model State {
   id   String @id @default(uuid())
@@ -206,12 +190,6 @@ model Town {
 
 // ---------- Taxonomy ----------
 
-// Categories are a small, curated top-level list (20 today) — seeded by
-// admin, but businesses can now propose a new one if theirs genuinely
-// doesn't fit. New submissions go in as PENDING/USER_SUBMITTED, usable
-// immediately on the submitting business's own page, and queued for admin
-// review at /admin/taxonomy-review — same submit-and-review pattern as
-// Town and Keyword.
 model Category {
   id                String         @id @default(uuid())
   name              String
@@ -323,7 +301,42 @@ model Post {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
+  comments        Comment[]
+  likes           PostLike[]
+
   @@map("posts")
+}
+
+// A comment on a post. Any signed-in user may comment. The author can
+// edit/delete their own; the owning business's owner can also delete
+// (but never edit) any comment on their posts, for basic moderation —
+// see comments_delete RLS policy.
+model Comment {
+  id           String   @id @default(uuid())
+  postId       String
+  post         Post     @relation(fields: [postId], references: [id])
+  authorUserId String
+  author       User     @relation(fields: [authorUserId], references: [id])
+  content      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([postId])
+  @@map("comments")
+}
+
+// A like on a post — simple toggle, one per person per post.
+model PostLike {
+  id        String   @id @default(uuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@map("post_likes")
 }
 
 model Follow {
@@ -400,7 +413,6 @@ model Report {
   @@map("reports")
 }
 
-// append-only — no admin, including Super Admin, may update or delete rows
 model AuditLog {
   id           String   @id @default(uuid())
   adminUserId  String
