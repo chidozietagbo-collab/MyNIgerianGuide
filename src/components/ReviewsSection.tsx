@@ -40,7 +40,7 @@ function StarRating({ value, onChange }: { value: number; onChange?: (n: number)
           className={onChange ? "cursor-pointer" : "cursor-default"}
         >
           <Star
-            className={`h-5 w-5 ${n <= value ? "fill-amber text-amber" : "text-ink-100"}`}
+            className={`h-5 w-5 ${n <= value ? "fill-amber text-amber" : "text-ink-300"}`}
           />
         </button>
       ))}
