@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import PhotoGallery from "@/components/PhotoGallery";
 import PostsSection from "@/components/PostsSection";
 import FollowButton from "@/components/FollowButton";
+import ReviewsSection from "@/components/ReviewsSection";
 import EditableHeader from "@/components/EditableHeader";
 import EditableAbout from "@/components/EditableAbout";
 import EditableContact from "@/components/EditableContact";
@@ -33,6 +34,18 @@ export default async function BusinessPage({ params }: PageProps) {
       posts: {
         orderBy: { createdAt: "desc" },
         select: { id: true, content: true, mediaUrls: true, createdAt: true, isHidden: true },
+      },
+      reviews: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          userId: true,
+          rating: true,
+          body: true,
+          ownerResponse: true,
+          createdAt: true,
+          user: { select: { name: true, email: true } },
+        },
       },
     },
   });
@@ -284,7 +297,23 @@ export default async function BusinessPage({ params }: PageProps) {
         isOwner={isOwner}
       />
 
-      {/* Reviews / Follow land here next in Milestone 3 */}
+      {/* Reviews */}
+      <ReviewsSection
+        businessPageId={business.id}
+        initialReviews={business.reviews.map((r) => ({
+          id: r.id,
+          userId: r.userId,
+          userName: r.user.name || r.user.email.split("@")[0],
+          rating: r.rating,
+          body: r.body,
+          ownerResponse: r.ownerResponse,
+          createdAt: r.createdAt.toISOString(),
+        }))}
+        averageRating={business.averageRating}
+        currentUserId={user?.id ?? null}
+        isOwner={isOwner}
+        isFollowing={!!currentUserFollow}
+      />
 
       {isOwner && (
         <div className="mt-10 border-t border-ink-100 pt-6">
