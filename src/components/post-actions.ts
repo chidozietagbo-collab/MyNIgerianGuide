@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { createOrUpdatePostNotification } from "./create-notification";
 
 async function requireOwnership(businessPageId: string) {
   const supabase = await createClient();
@@ -13,7 +14,7 @@ async function requireOwnership(businessPageId: string) {
 
   const business = await prisma.businessPage.findUnique({
     where: { id: businessPageId },
-    select: { ownerUserId: true, slug: true },
+    select: { ownerUserId: true, slug: true, name: true },
   });
   if (!business || business.ownerUserId !== user.id) {
     throw new Error("You don't own this business page.");
@@ -38,6 +39,17 @@ export async function createPost(businessPageId: string, content: string, mediaU
       mediaUrls,
     },
   });
+
+  // Notify every follower — batched per-business so repeated posts before
+  // a follower checks their notifications don't spam them with one entry
+  // per post (see createOrUpdatePostNotification).
+  const followers = await prisma.follow.findMany({
+    where: { businessPageId },
+    select: { followerUserId: true },
+  });
+  await Promise.all(
+    followers.map((f) => createOrUpdatePostNotification(f.followerUserId, businessPageId, business.name))
+  );
 
   revalidatePath(`/b/${business.slug}`);
 }
