@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BadgeCheck, MapPin, Search as SearchIcon } from "lucide-react";
 import { searchBusinesses, suggestBusinesses, type SearchResult, type BusinessSuggestion } from "./actions";
 
@@ -21,6 +21,7 @@ export default function SearchPage() {
 }
 
 function SearchPageInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const initialKeyword = searchParams.get("keyword") ?? "";
   const initialLocation = searchParams.get("location") ?? "";
