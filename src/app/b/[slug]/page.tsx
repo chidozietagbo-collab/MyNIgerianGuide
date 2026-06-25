@@ -303,6 +303,7 @@ export default async function BusinessPage({ params }: PageProps) {
       {/* Updates / Posts */}
       <PostsSection
         businessPageId={business.id}
+        businessSlug={business.slug}
         initialPosts={business.posts
           .filter((p) => isOwner || !p.isHidden)
           .map((p) => ({
