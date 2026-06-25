@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { createNotification } from "./create-notification";
 
 export async function toggleFollow(businessPageId: string) {
   const supabase = await createClient();
@@ -13,7 +14,7 @@ export async function toggleFollow(businessPageId: string) {
 
   const business = await prisma.businessPage.findUnique({
     where: { id: businessPageId },
-    select: { slug: true, ownerUserId: true },
+    select: { slug: true, name: true, ownerUserId: true },
   });
   if (!business) {
     throw new Error("Business not found.");
@@ -35,6 +36,20 @@ export async function toggleFollow(businessPageId: string) {
   } else {
     await prisma.follow.create({
       data: { followerUserId: user.id, businessPageId },
+    });
+
+    const follower = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { name: true, email: true },
+    });
+    const followerName = follower?.name || follower?.email.split("@")[0] || "Someone";
+
+    await createNotification({
+      userId: business.ownerUserId,
+      type: "NEW_FOLLOWER",
+      title: `${followerName} started following ${business.name}`,
+      entityType: "BUSINESS_PAGE",
+      entityId: businessPageId,
     });
   }
 
