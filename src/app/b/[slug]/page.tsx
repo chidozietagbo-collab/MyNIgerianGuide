@@ -33,7 +33,24 @@ export default async function BusinessPage({ params }: PageProps) {
       media: { orderBy: { createdAt: "asc" }, select: { id: true, url: true } },
       posts: {
         orderBy: { createdAt: "desc" },
-        select: { id: true, content: true, mediaUrls: true, createdAt: true, isHidden: true },
+        select: {
+          id: true,
+          content: true,
+          mediaUrls: true,
+          createdAt: true,
+          isHidden: true,
+          comments: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              authorUserId: true,
+              content: true,
+              createdAt: true,
+              author: { select: { name: true, email: true } },
+            },
+          },
+          likes: { select: { userId: true } },
+        },
       },
       reviews: {
         orderBy: { createdAt: "desc" },
@@ -293,8 +310,19 @@ export default async function BusinessPage({ params }: PageProps) {
             content: p.content,
             mediaUrls: p.mediaUrls,
             createdAt: p.createdAt.toISOString(),
+            likeCount: p.likes.length,
+            isLiked: user ? p.likes.some((l) => l.userId === user.id) : false,
+            comments: p.comments.map((c) => ({
+              id: c.id,
+              authorUserId: c.authorUserId,
+              authorName: c.author.name || c.author.email.split("@")[0],
+              content: c.content,
+              createdAt: c.createdAt.toISOString(),
+            })),
           }))}
         isOwner={isOwner}
+        currentUserId={user?.id ?? null}
+        isSignedIn={!!user}
       />
 
       {/* Reviews */}
