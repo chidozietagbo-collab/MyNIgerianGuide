@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import PhotoGallery from "@/components/PhotoGallery";
 import PostsSection from "@/components/PostsSection";
 import FollowButton from "@/components/FollowButton";
+import SharePageButton from "@/components/SharePageButton";
 import ReviewsSection from "@/components/ReviewsSection";
 import EditableHeader from "@/components/EditableHeader";
 import EditableAbout from "@/components/EditableAbout";
@@ -158,15 +159,18 @@ export default async function BusinessPage({ params }: PageProps) {
             </span>
           )}
         </div>
-        {!isOwner && (
-          <FollowButton
-            businessPageId={business.id}
-            businessSlug={business.slug}
-            initialIsFollowing={!!currentUserFollow}
-            followerCount={followerCount}
-            isSignedIn={!!user}
-          />
-        )}
+        <div className="flex flex-col items-end gap-2">
+          {!isOwner && (
+            <FollowButton
+              businessPageId={business.id}
+              businessSlug={business.slug}
+              initialIsFollowing={!!currentUserFollow}
+              followerCount={followerCount}
+              isSignedIn={!!user}
+            />
+          )}
+          <SharePageButton businessSlug={business.slug} />
+        </div>
       </div>
 
       {/* About */}
