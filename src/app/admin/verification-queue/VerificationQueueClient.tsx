@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { FileText, Loader2 } from "lucide-react";
+import { FileText, Loader2, X } from "lucide-react";
 import { getDocumentSignedUrl, approveVerification, rejectVerification } from "./verification-queue-actions";
 
 const textareaClass =
@@ -56,13 +56,15 @@ function RequestCard({ request, onResolved }: { request: VerificationRequest; on
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [loadingDocPath, setLoadingDocPath] = useState<string | null>(null);
+  const [viewingDoc, setViewingDoc] = useState<{ url: string; isImage: boolean; name: string } | null>(null);
 
   async function handleViewDocument(path: string) {
     setError(null);
     setLoadingDocPath(path);
     try {
       const url = await getDocumentSignedUrl(path);
-      window.open(url, "_blank", "noopener,noreferrer");
+      const isImage = /\.(jpe?g|png)$/i.test(path);
+      setViewingDoc({ url, isImage, name: path.split("/").pop() || "document" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't open this document.");
     } finally {
@@ -176,6 +178,31 @@ function RequestCard({ request, onResolved }: { request: VerificationRequest; on
           >
             Reject
           </button>
+        </div>
+      )}
+
+      {viewingDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg bg-white shadow-lg">
+            <div className="flex items-center justify-between border-b border-ink-100 p-3">
+              <p className="text-sm font-medium text-ink-900">{viewingDoc.name}</p>
+              <button type="button" onClick={() => setViewingDoc(null)} aria-label="Close">
+                <X className="h-4 w-4 text-ink-300" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-2">
+              {viewingDoc.isImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={viewingDoc.url} alt={viewingDoc.name} className="mx-auto max-w-full" />
+              ) : (
+                <iframe
+                  src={`${viewingDoc.url}#toolbar=0`}
+                  title={viewingDoc.name}
+                  className="h-[75vh] w-full"
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
