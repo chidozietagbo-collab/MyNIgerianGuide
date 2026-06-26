@@ -291,14 +291,7 @@ function UserDetailView({
             <ActionTrigger label="Suspend" active={activeAction === "suspend"} onClick={() => setActiveAction("suspend")} />
           )}
           {canSuspend && detail.accountStatus === "SUSPENDED" && (
-            <button
-              type="button"
-              onClick={() => runAction(() => unsuspendUser(userId), "Suspension lifted.")}
-              disabled={isPending}
-              className="rounded-md border border-ink-100 px-3 py-1.5 text-xs font-semibold text-ink-700 transition hover:border-ink-300 disabled:opacity-60"
-            >
-              Lift suspension
-            </button>
+            <ActionTrigger label="Lift suspension" active={activeAction === "unsuspend"} onClick={() => setActiveAction("unsuspend")} />
           )}
           {canBan && detail.accountStatus !== "BANNED" && (
             <ActionTrigger label="Ban" danger active={activeAction === "ban"} onClick={() => setActiveAction("ban")} />
@@ -361,6 +354,25 @@ function UserDetailView({
                 className="rounded-md bg-ink-700 px-3 py-1.5 text-xs font-semibold text-white"
               >
                 Confirm suspension
+              </button>
+              <button type="button" onClick={() => setActiveAction(null)} className="text-xs text-ink-500">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {activeAction === "unsuspend" && (
+          <div className="mt-3 space-y-2 rounded-md bg-ink-50 p-3">
+            <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} className={textareaClass} placeholder="Reason for lifting this suspension…" />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => runAction(() => unsuspendUser(userId, reason), "Suspension lifted.")}
+                disabled={isPending}
+                className="rounded-md bg-ink-700 px-3 py-1.5 text-xs font-semibold text-white"
+              >
+                Confirm
               </button>
               <button type="button" onClick={() => setActiveAction(null)} className="text-xs text-ink-500">
                 Cancel
