@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 
 type LogAdminActionInput = {
   adminUserId: string;
@@ -6,7 +7,7 @@ type LogAdminActionInput = {
   entityType: string;
   entityId: string;
   reason?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Prisma.InputJsonValue;
 };
 
 // audit_log is append-only by design (brief: "no admin, including Super
