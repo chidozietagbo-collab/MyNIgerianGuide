@@ -51,7 +51,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const business = await getBusinessForMetadata(slug);
 
   if (!business || !business.isPublished) {
-    return { title: "Business not found | MyNigerianGuide" };
+    return { title: "Business not found" };
   }
 
   const locationParts = [business.town?.name, business.localGovernment.name, business.state.name].filter(
@@ -59,7 +59,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   );
   const locationLabel = locationParts.join(", ");
 
-  const title = `${business.name} – ${business.category.name} in ${locationLabel} | MyNigerianGuide`;
+  const title = `${business.name} – ${business.category.name} in ${locationLabel}`;
   const description =
     business.description?.slice(0, 160) ||
     `Find ${business.name}, a ${business.category.name.toLowerCase()} business in ${locationLabel}. Contact details, photos, and reviews on MyNigerianGuide.`;
