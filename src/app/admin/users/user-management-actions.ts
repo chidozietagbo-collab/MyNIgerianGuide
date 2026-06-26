@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePermission } from "@/components/require-permission";
 import { createNotification } from "@/components/create-notification";
@@ -54,6 +55,66 @@ export async function getUserDetail(userId: string) {
   }
 
   return user;
+}
+
+// Gated to admin.view_audit_log specifically — separate from user.view,
+// since the brief reserves the full audit trail for a narrower set of
+// roles (e.g. Support Agent has user.view but NOT admin.view_audit_log).
+// Returns null (rather than throwing) if the caller lacks this permission,
+// so the UI can simply not render the history section for those admins
+// instead of erroring out the whole user detail view.
+export async function getUserAuditHistory(userId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Not signed in.");
+  }
+
+  const adminUser = await prisma.adminUser.findUnique({
+    where: { userId: user.id },
+    select: {
+      isActive: true,
+      userRoles: {
+        select: {
+          role: {
+            select: { rolePermissions: { select: { permission: { select: { key: true } } } } },
+          },
+        },
+      },
+    },
+  });
+
+  const hasAuditPermission =
+    !!adminUser?.isActive &&
+    adminUser.userRoles.some((ur) =>
+      ur.role.rolePermissions.some((rp) => rp.permission.key === "admin.view_audit_log")
+    );
+
+  if (!hasAuditPermission) {
+    return null;
+  }
+
+  const entries = await prisma.auditLog.findMany({
+    where: { entityType: "USER", entityId: userId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      action: true,
+      reason: true,
+      metadata: true,
+      createdAt: true,
+      adminUser: { select: { name: true, email: true } },
+    },
+  });
+
+  return entries.map((e) => ({
+    id: e.id,
+    action: e.action,
+    reason: e.reason,
+    metadata: e.metadata,
+    createdAt: e.createdAt.toISOString(),
+    adminName: e.adminUser.name || e.adminUser.email.split("@")[0],
+  }));
 }
 
 export async function warnUser(userId: string, reason: string) {
