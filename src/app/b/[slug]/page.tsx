@@ -8,6 +8,7 @@ import PhotoGallery from "@/components/PhotoGallery";
 import PostsSection from "@/components/PostsSection";
 import FollowButton from "@/components/FollowButton";
 import SharePageButton from "@/components/SharePageButton";
+import ReportButton from "@/components/ReportButton";
 import ReviewsSection from "@/components/ReviewsSection";
 import EditableHeader from "@/components/EditableHeader";
 import EditableAbout from "@/components/EditableAbout";
@@ -23,11 +24,6 @@ type PageProps = {
   params: Promise<{ slug: string }>;
 };
 
-// Small, focused query just for page metadata — wrapped in React's cache()
-// so generateMetadata and the page component share one database round
-// trip instead of two, per Next.js's documented pattern for this exact
-// situation. Deliberately separate from the full page query below (which
-// also pulls posts/comments/reviews) since metadata never needs those.
 const getBusinessForMetadata = cache(async (slug: string) => {
   return prisma.businessPage.findUnique({
     where: { slug },
@@ -152,9 +148,6 @@ export default async function BusinessPage({ params }: PageProps) {
       : null,
   ]);
 
-  // Owner-only data needed for the inline edit forms — fetched only when
-  // it'll actually be used, so a non-owner visiting the page doesn't pay
-  // for these extra queries.
   const [categories, states, initialLocalGovernments, initialTowns] = isOwner
     ? await Promise.all([
         prisma.category.findMany({
@@ -180,17 +173,10 @@ export default async function BusinessPage({ params }: PageProps) {
   const locationParts = [business.town?.name, business.localGovernment.name, business.state.name].filter(
     Boolean
   );
-  // Cast is safe: hours are always written by the wizard/edit forms using
-  // exactly these day-abbreviation keys, but Prisma's Json field type is
-  // necessarily the broader Record<string, ...> shape.
   const hours = business.hours as
     | Partial<Record<"Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun", { open: string; close: string; closed: boolean }>>
     | null;
 
-  // Structured data per brief Section 9.2 — LocalBusiness schema, with
-  // AggregateRating only included when there's at least one real review
-  // (Google's own guidelines warn against AggregateRating with zero
-  // reviews, since a 0.0 average with no basis to show is misleading).
   const structuredData: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
@@ -213,8 +199,6 @@ export default async function BusinessPage({ params }: PageProps) {
     <main className="mx-auto max-w-3xl px-4 py-12">
       <script
         type="application/ld+json"
-        // Structured data must be inlined as a plain string — React's
-        // normal escaping would otherwise corrupt the JSON.
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
 
@@ -266,6 +250,9 @@ export default async function BusinessPage({ params }: PageProps) {
             />
           )}
           <SharePageButton businessSlug={business.slug} />
+          {!isOwner && (
+            <ReportButton entityType="BUSINESS_PAGE" entityId={business.id} isSignedIn={!!user} />
+          )}
         </div>
       </div>
 
@@ -442,6 +429,7 @@ export default async function BusinessPage({ params }: PageProps) {
         currentUserId={user?.id ?? null}
         isOwner={isOwner}
         isFollowing={!!currentUserFollow}
+        isSignedIn={!!user}
       />
 
       {isOwner && (
