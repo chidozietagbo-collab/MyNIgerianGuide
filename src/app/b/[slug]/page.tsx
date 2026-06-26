@@ -1,4 +1,6 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { BadgeCheck, Clock, Globe, Mail, MapPin, Phone } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
@@ -15,10 +17,75 @@ import EditableKeywords from "@/components/EditableKeywords";
 import DeleteBusinessButton from "@/components/DeleteBusinessButton";
 
 const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+const SITE_URL = "https://my-n-igerian-guide.vercel.app";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
 };
+
+// Small, focused query just for page metadata — wrapped in React's cache()
+// so generateMetadata and the page component share one database round
+// trip instead of two, per Next.js's documented pattern for this exact
+// situation. Deliberately separate from the full page query below (which
+// also pulls posts/comments/reviews) since metadata never needs those.
+const getBusinessForMetadata = cache(async (slug: string) => {
+  return prisma.businessPage.findUnique({
+    where: { slug },
+    select: {
+      name: true,
+      description: true,
+      isPublished: true,
+      averageRating: true,
+      category: { select: { name: true } },
+      state: { select: { name: true } },
+      localGovernment: { select: { name: true } },
+      town: { select: { name: true } },
+      media: { take: 1, orderBy: { createdAt: "asc" }, select: { url: true } },
+      _count: { select: { reviews: true } },
+    },
+  });
+});
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const business = await getBusinessForMetadata(slug);
+
+  if (!business || !business.isPublished) {
+    return { title: "Business not found | MyNigerianGuide" };
+  }
+
+  const locationParts = [business.town?.name, business.localGovernment.name, business.state.name].filter(
+    Boolean
+  );
+  const locationLabel = locationParts.join(", ");
+
+  const title = `${business.name} – ${business.category.name} in ${locationLabel} | MyNigerianGuide`;
+  const description =
+    business.description?.slice(0, 160) ||
+    `Find ${business.name}, a ${business.category.name.toLowerCase()} business in ${locationLabel}. Contact details, photos, and reviews on MyNigerianGuide.`;
+
+  const imageUrl = business.media[0]?.url;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: `${SITE_URL}/b/${slug}` },
+    openGraph: {
+      title,
+      description,
+      url: `${SITE_URL}/b/${slug}`,
+      siteName: "MyNigerianGuide",
+      type: "website",
+      images: imageUrl ? [{ url: imageUrl }] : undefined,
+    },
+    twitter: {
+      card: imageUrl ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: imageUrl ? [imageUrl] : undefined,
+    },
+  };
+}
 
 export default async function BusinessPage({ params }: PageProps) {
   const { slug } = await params;
@@ -120,8 +187,37 @@ export default async function BusinessPage({ params }: PageProps) {
     | Partial<Record<"Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun", { open: string; close: string; closed: boolean }>>
     | null;
 
+  // Structured data per brief Section 9.2 — LocalBusiness schema, with
+  // AggregateRating only included when there's at least one real review
+  // (Google's own guidelines warn against AggregateRating with zero
+  // reviews, since a 0.0 average with no basis to show is misleading).
+  const structuredData: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "LocalBusiness",
+    name: business.name,
+    url: `${SITE_URL}/b/${business.slug}`,
+    ...(business.description ? { description: business.description } : {}),
+    ...(business.address ? { address: { "@type": "PostalAddress", streetAddress: business.address, addressLocality: locationParts[0], addressRegion: business.state.name, addressCountry: "NG" } } : {}),
+    ...(business.phone ? { telephone: business.phone } : {}),
+    ...(business.media[0] ? { image: business.media[0].url } : {}),
+  };
+  if (business.reviews.length > 0) {
+    structuredData.aggregateRating = {
+      "@type": "AggregateRating",
+      ratingValue: business.averageRating.toFixed(1),
+      reviewCount: business.reviews.length,
+    };
+  }
+
   return (
     <main className="mx-auto max-w-3xl px-4 py-12">
+      <script
+        type="application/ld+json"
+        // Structured data must be inlined as a plain string — React's
+        // normal escaping would otherwise corrupt the JSON.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+
       {/* Header */}
       <div className="flex items-start gap-4 rounded-lg border border-ink-100 bg-white p-6 shadow-sm">
         <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-green-600 font-display text-xl font-bold text-white">
