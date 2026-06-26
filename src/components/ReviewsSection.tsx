@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Star, Trash2 } from "lucide-react";
 import { createReview, updateReview, deleteReview, replyToReview, deleteReply } from "./review-actions";
+import ReportButton from "./ReportButton";
 
 const textareaClass =
   "w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500";
@@ -25,6 +26,7 @@ type ReviewsSectionProps = {
   currentUserId: string | null;
   isOwner: boolean;
   isFollowing: boolean;
+  isSignedIn: boolean;
 };
 
 function StarRating({ value, onChange }: { value: number; onChange?: (n: number) => void }) {
@@ -55,6 +57,7 @@ export default function ReviewsSection({
   currentUserId,
   isOwner,
   isFollowing,
+  isSignedIn,
 }: ReviewsSectionProps) {
   const router = useRouter();
   const [writing, setWriting] = useState(false);
@@ -112,6 +115,7 @@ export default function ReviewsSection({
               review={review}
               isMine={review.userId === currentUserId}
               isOwner={isOwner}
+              isSignedIn={isSignedIn}
             />
           ))}
         </div>
@@ -188,7 +192,17 @@ function ReviewForm({
   );
 }
 
-function ReviewItem({ review, isMine, isOwner }: { review: Review; isMine: boolean; isOwner: boolean }) {
+function ReviewItem({
+  review,
+  isMine,
+  isOwner,
+  isSignedIn,
+}: {
+  review: Review;
+  isMine: boolean;
+  isOwner: boolean;
+  isSignedIn: boolean;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -236,7 +250,7 @@ function ReviewItem({ review, isMine, isOwner }: { review: Review; isMine: boole
             </span>
           </div>
         </div>
-        {isMine && (
+        {isMine ? (
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => setEditing(true)} aria-label="Edit review" className="text-ink-300 hover:text-green-600">
               <Pencil className="h-3.5 w-3.5" />
@@ -261,6 +275,8 @@ function ReviewItem({ review, isMine, isOwner }: { review: Review; isMine: boole
               </span>
             )}
           </div>
+        ) : (
+          <ReportButton entityType="REVIEW" entityId={review.id} isSignedIn={isSignedIn} variant="icon" />
         )}
       </div>
 
