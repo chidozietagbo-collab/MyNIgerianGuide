@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import { BadgeCheck, Search } from "lucide-react";
+import { BadgeCheck, History, Search } from "lucide-react";
 import {
   searchUsers,
   getUserDetail,
+  getUserAuditHistory,
   warnUser,
   suspendUser,
   unsuspendUser,
@@ -36,6 +37,15 @@ type UserDetail = {
   _count: { posts: number; reviews: number; follows: number };
 };
 
+type AuditEntry = {
+  id: string;
+  action: string;
+  reason: string | null;
+  metadata: unknown;
+  createdAt: string;
+  adminName: string;
+};
+
 type UserManagementClientProps = {
   initialUsers: UserListItem[];
   canWarn: boolean;
@@ -50,6 +60,15 @@ const STATUS_STYLES: Record<string, string> = {
   SUSPENDED: "bg-ink-100 text-ink-900",
   BANNED: "bg-red-50 text-danger",
   DELETED: "bg-ink-100 text-ink-300",
+};
+
+const ACTION_LABELS: Record<string, string> = {
+  "user.warn": "Sent a warning",
+  "user.suspend": "Suspended the account",
+  "user.unsuspend": "Lifted a suspension",
+  "user.ban": "Banned the account",
+  "user.delete": "Deleted the account",
+  "user.reset_password": "Sent a password reset",
 };
 
 export default function UserManagementClient({
@@ -145,6 +164,7 @@ function UserDetailView({
   canResetPassword: boolean;
 }) {
   const [detail, setDetail] = useState<UserDetail | null>(null);
+  const [history, setHistory] = useState<AuditEntry[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -156,8 +176,15 @@ function UserDetailView({
   async function loadDetail() {
     setLoading(true);
     try {
-      const data = await getUserDetail(userId);
+      const [data, auditHistory] = await Promise.all([
+        getUserDetail(userId),
+        getUserAuditHistory(userId),
+      ]);
       setDetail(data);
+      // null means the viewing admin doesn't hold admin.view_audit_log —
+      // the history section simply won't render in that case, rather
+      // than erroring the whole page.
+      setHistory(auditHistory);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load this user.");
     } finally {
@@ -380,6 +407,48 @@ function UserDetailView({
           </div>
         )}
       </div>
+
+      {/* Account history — only renders for admins holding admin.view_audit_log;
+          getUserAuditHistory returns null for everyone else, and history
+          stays null, so this section simply doesn't appear rather than
+          erroring for an admin who can manage the account but shouldn't
+          see the full audit trail (e.g. a Support Agent). */}
+      {history && (
+        <div className="mt-4 rounded-lg border border-ink-100 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-2">
+            <History className="h-4 w-4 text-ink-300" />
+            <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-ink-300">
+              Account history
+            </h2>
+          </div>
+
+          {history.length === 0 ? (
+            <p className="mt-2 text-sm text-ink-300">No admin actions on record for this account.</p>
+          ) : (
+            <div className="mt-3 space-y-3">
+              {history.map((entry) => (
+                <div key={entry.id} className="border-l-2 border-ink-100 pl-3">
+                  <p className="text-sm text-ink-900">
+                    <span className="font-medium">{entry.adminName}</span>
+                    {" — "}
+                    {ACTION_LABELS[entry.action] ?? entry.action}
+                  </p>
+                  {entry.reason && <p className="mt-0.5 text-sm text-ink-500">{entry.reason}</p>}
+                  <p className="mt-0.5 text-xs text-ink-300">
+                    {new Date(entry.createdAt).toLocaleDateString("en-NG", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                    {" at "}
+                    {new Date(entry.createdAt).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </main>
   );
 }
