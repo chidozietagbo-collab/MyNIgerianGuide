@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePermission } from "@/components/require-permission";
 import { createNotification } from "@/components/create-notification";
@@ -54,15 +53,6 @@ export async function getUserDetail(userId: string) {
     throw new Error("User not found.");
   }
 
-  return user;
-}
-
-async function getActingAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    throw new Error("Not signed in.");
-  }
   return user;
 }
 
