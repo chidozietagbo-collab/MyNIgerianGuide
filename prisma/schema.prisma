@@ -125,11 +125,12 @@ model User {
 
 // AdminUser now only marks "is this person any kind of admin at all" via
 // isActive. WHICH admin capabilities they hold lives entirely in the
-// roles/permissions system below (userRoles -> Role -> RolePermission ->
-// Permission) — the old single adminRole enum field has been removed in
-// favour of this permissions-first model, agreed this session, so one
-// person can hold multiple roles (e.g. Verification Officer AND
-// Moderation Officer) rather than being limited to exactly one fixed role.
+// roles/permissions system below (userRoles -> AdminRoleTemplate ->
+// RolePermission -> Permission) — the old single adminRole enum field has
+// been removed in favour of this permissions-first model, agreed this
+// session, so one person can hold multiple roles (e.g. Verification
+// Officer AND Moderation Officer) rather than being limited to exactly
+// one fixed role.
 model AdminUser {
   id          String      @id @default(uuid())
   userId      String      @unique
@@ -167,7 +168,7 @@ model Permission {
 // Admin, Operations Manager, Verification Officer, Moderation Officer,
 // Support Agent) from accidental deletion/rename, while still allowing
 // genuinely custom roles to be created later with zero schema changes.
-model Role {
+model AdminRoleTemplate {
   id           String   @id @default(uuid())
   name         String   @unique
   description  String?
@@ -182,7 +183,7 @@ model Role {
 
 model RolePermission {
   roleId       String
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  role         AdminRoleTemplate @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permissionId String
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
@@ -199,7 +200,7 @@ model UserRole {
   adminUserId  String
   adminUser    AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
   roleId       String
-  role         Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  role         AdminRoleTemplate @relation(fields: [roleId], references: [id], onDelete: Cascade)
   assignedAt   DateTime  @default(now())
   assignedById String?
   assignedBy   User?     @relation("RoleAssignedBy", fields: [assignedById], references: [id])
