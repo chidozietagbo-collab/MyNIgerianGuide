@@ -180,8 +180,13 @@ export async function suspendUser(userId: string, reason: string, days: number) 
   revalidatePath("/admin/users");
 }
 
-export async function unsuspendUser(userId: string) {
+export async function unsuspendUser(userId: string, reason: string) {
   const admin = await requirePermission("user.suspend");
+
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    throw new Error("Please provide a reason for lifting this suspension.");
+  }
 
   await prisma.user.update({
     where: { id: userId },
@@ -192,6 +197,7 @@ export async function unsuspendUser(userId: string) {
     userId,
     type: "ACCOUNT_REINSTATED",
     title: "Your suspension has been lifted",
+    body: trimmedReason,
   });
 
   await logAdminAction({
@@ -199,6 +205,7 @@ export async function unsuspendUser(userId: string) {
     action: "user.unsuspend",
     entityType: "USER",
     entityId: userId,
+    reason: trimmedReason,
   });
 
   revalidatePath("/admin/users");
