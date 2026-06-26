@@ -18,10 +18,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   });
 
   if (!category) {
-    return { title: "Category not found | MyNigerianGuide" };
+    return { title: "Category not found" };
   }
 
-  const title = `${category.name} Businesses in Nigeria | MyNigerianGuide`;
+  const title = `${category.name} Businesses in Nigeria`;
   const description = `Find trusted ${category.name.toLowerCase()} businesses across Nigeria. Browse listings, read reviews, and connect directly on MyNigerianGuide.`;
 
   return {
