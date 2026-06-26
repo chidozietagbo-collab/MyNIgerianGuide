@@ -7,6 +7,7 @@ import { Heart, Loader2, MessageCircle, Pencil, Share2, Trash2, Upload, X } from
 import { createClient } from "@/lib/supabase/client";
 import { createPost, updatePost, deletePost } from "./post-actions";
 import { addComment, updateComment, deleteComment, toggleLike } from "./comment-actions";
+import ReportButton from "./ReportButton";
 
 const inputClass =
   "w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500";
@@ -274,9 +275,6 @@ function PostItem({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  // Like button: optimistic toggle on the button's own appearance only —
-  // the actual count still comes from the server on next refresh, this
-  // just avoids a visible delay on the click itself.
   const [liking, startLikeTransition] = useTransition();
   const [optimisticLiked, setOptimisticLiked] = useState(post.isLiked);
   const [optimisticCount, setOptimisticCount] = useState(post.likeCount);
@@ -287,10 +285,6 @@ function PostItem({
   const [highlighted, setHighlighted] = useState(false);
   const postRef = useRef<HTMLDivElement>(null);
 
-  // If someone arrives via a shared link (e.g. /b/slug#post-123), scroll
-  // to this exact post and briefly highlight it so it's obvious which
-  // post the link was about, rather than landing on a long page of posts
-  // with no indication of which one was shared.
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash === `#post-${post.id}`) {
       postRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -333,7 +327,6 @@ function PostItem({
         await toggleLike(post.id);
         router.refresh();
       } catch {
-        // Revert optimistic state on failure.
         setOptimisticLiked(!nextLiked);
         setOptimisticCount(post.likeCount);
       }
@@ -407,7 +400,7 @@ function PostItem({
 
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 
-      {/* Like / comment toggle row */}
+      {/* Like / comment / share / report row */}
       <div className="mt-3 flex items-center gap-4 border-t border-ink-100 pt-3">
         <button
           type="button"
@@ -437,6 +430,9 @@ function PostItem({
           <Share2 className="h-4 w-4" />
           {shareCopied ? "Copied!" : "Share"}
         </button>
+        {!isOwner && (
+          <ReportButton entityType="POST" entityId={post.id} isSignedIn={isSignedIn} />
+        )}
       </div>
 
       {showComments && (
