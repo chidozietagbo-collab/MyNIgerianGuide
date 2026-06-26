@@ -27,14 +27,6 @@ enum AccountStatus {
   DELETED
 }
 
-enum AdminRole {
-  SUPER_ADMIN
-  OPERATIONS_MANAGER
-  VERIFICATION_OFFICER
-  MODERATION_OFFICER
-  SUPPORT_AGENT
-}
-
 enum VerificationStatus {
   UNVERIFIED
   PENDING
@@ -126,21 +118,94 @@ model User {
   reportsResolved        Report[]               @relation("ResolvedReports")
   verificationsReviewed  VerificationRequest[]  @relation("ReviewedVerifications")
   adminsCreated          AdminUser[]            @relation("CreatedByAdmin")
+  rolesAssigned          UserRole[]             @relation("RoleAssignedBy")
 
   @@map("users")
 }
 
+// AdminUser now only marks "is this person any kind of admin at all" via
+// isActive. WHICH admin capabilities they hold lives entirely in the
+// roles/permissions system below (userRoles -> Role -> RolePermission ->
+// Permission) — the old single adminRole enum field has been removed in
+// favour of this permissions-first model, agreed this session, so one
+// person can hold multiple roles (e.g. Verification Officer AND
+// Moderation Officer) rather than being limited to exactly one fixed role.
 model AdminUser {
-  id          String    @id @default(uuid())
-  userId      String    @unique
-  user        User      @relation(fields: [userId], references: [id])
-  adminRole   AdminRole
-  isActive    Boolean   @default(true)
+  id          String      @id @default(uuid())
+  userId      String      @unique
+  user        User        @relation(fields: [userId], references: [id])
+  isActive    Boolean     @default(true)
   createdById String?
-  createdBy   User?     @relation("CreatedByAdmin", fields: [createdById], references: [id])
-  createdAt   DateTime  @default(now())
+  createdBy   User?       @relation("CreatedByAdmin", fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+
+  userRoles   UserRole[]
 
   @@map("admin_users")
+}
+
+// A single, specific capability — named module.action (e.g. business.verify,
+// review.moderate) so the list stays navigable as MNG grows into more
+// modules (government services, marketplace, events, etc per the founder's
+// long-term vision) without the permission list becoming an unstructured
+// mess. This is the source of truth for all admin authorization.
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  module      String
+  description String
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+// A reusable, named bundle of permissions — a template, not a hardcoded
+// enum. isSystemRole protects the 5 brief-defined starter roles (Super
+// Admin, Operations Manager, Verification Officer, Moderation Officer,
+// Support Agent) from accidental deletion/rename, while still allowing
+// genuinely custom roles to be created later with zero schema changes.
+model Role {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  description  String?
+  isSystemRole Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@map("roles")
+}
+
+model RolePermission {
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// Which roles a given admin user holds — deliberately many-to-many so one
+// person can hold multiple roles at once. Per-user permission overrides
+// (grant/revoke individual permissions outside of roles) were deliberately
+// deferred until a genuine business need arises — this schema can support
+// adding a UserPermission table later without touching anything here.
+model UserRole {
+  adminUserId  String
+  adminUser    AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  roleId       String
+  role         Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedAt   DateTime  @default(now())
+  assignedById String?
+  assignedBy   User?     @relation("RoleAssignedBy", fields: [assignedById], references: [id])
+
+  @@id([adminUserId, roleId])
+  @@map("user_roles")
 }
 
 // ---------- Location hierarchy ----------
@@ -266,8 +331,8 @@ model BusinessPage {
 
   businessKeywords     BusinessKeyword[]
   posts                Post[]
-  follows              Follow[]
-  reviews              Review[]
+  follows               Follow[]
+  reviews               Review[]
   media                Media[]
   verificationRequests VerificationRequest[]
   sponsoredListings    SponsoredListing[]
@@ -307,10 +372,6 @@ model Post {
   @@map("posts")
 }
 
-// A comment on a post. Any signed-in user may comment. The author can
-// edit/delete their own; the owning business's owner can also delete
-// (but never edit) any comment on their posts, for basic moderation —
-// see comments_delete RLS policy.
 model Comment {
   id           String   @id @default(uuid())
   postId       String
@@ -325,7 +386,6 @@ model Comment {
   @@map("comments")
 }
 
-// A like on a post — simple toggle, one per person per post.
 model PostLike {
   id        String   @id @default(uuid())
   postId    String
