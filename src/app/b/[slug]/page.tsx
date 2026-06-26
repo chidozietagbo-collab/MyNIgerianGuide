@@ -10,6 +10,7 @@ import FollowButton from "@/components/FollowButton";
 import SharePageButton from "@/components/SharePageButton";
 import ReportButton from "@/components/ReportButton";
 import ReviewsSection from "@/components/ReviewsSection";
+import VerificationSection from "@/components/VerificationSection";
 import EditableHeader from "@/components/EditableHeader";
 import EditableAbout from "@/components/EditableAbout";
 import EditableContact from "@/components/EditableContact";
@@ -139,11 +140,18 @@ export default async function BusinessPage({ params }: PageProps) {
   const { data: { user } } = await supabase.auth.getUser();
   const isOwner = user?.id === business.ownerUserId;
 
-  const [followerCount, currentUserFollow] = await Promise.all([
+  const [followerCount, currentUserFollow, latestVerificationRequest] = await Promise.all([
     prisma.follow.count({ where: { businessPageId: business.id } }),
     user
       ? prisma.follow.findUnique({
           where: { followerUserId_businessPageId: { followerUserId: user.id, businessPageId: business.id } },
+        })
+      : null,
+    isOwner
+      ? prisma.verificationRequest.findFirst({
+          where: { businessPageId: business.id },
+          orderBy: { createdAt: "desc" },
+          select: { cacNumber: true, status: true, reviewNotes: true, createdAt: true },
         })
       : null,
   ]);
@@ -255,6 +263,24 @@ export default async function BusinessPage({ params }: PageProps) {
           )}
         </div>
       </div>
+
+      {/* Verification — owner only, private business detail */}
+      {isOwner && (
+        <VerificationSection
+          businessPageId={business.id}
+          existingRequest={
+            latestVerificationRequest
+              ? {
+                  cacNumber: latestVerificationRequest.cacNumber,
+                  status: latestVerificationRequest.status,
+                  reviewNotes: latestVerificationRequest.reviewNotes,
+                  createdAt: latestVerificationRequest.createdAt.toISOString(),
+                }
+              : null
+          }
+          verificationStatus={business.verificationStatus}
+        />
+      )}
 
       {/* About */}
       {(business.description || isOwner) && (
