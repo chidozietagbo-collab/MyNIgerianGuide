@@ -18,10 +18,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   });
 
   if (!state) {
-    return { title: "Location not found | MyNigerianGuide" };
+    return { title: "Location not found" };
   }
 
-  const title = `Businesses in ${state.name} | MyNigerianGuide`;
+  const title = `Businesses in ${state.name}`;
   const description = `Discover trusted businesses and services in ${state.name}. Browse by category, read reviews, and connect directly on MyNigerianGuide.`;
 
   return {
