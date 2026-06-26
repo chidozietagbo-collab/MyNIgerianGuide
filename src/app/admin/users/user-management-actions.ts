@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requirePermission } from "@/components/require-permission";
 import { createNotification } from "@/components/create-notification";
-import { logAdminAction } from "./log-admin-action";
+import { logAdminAction } from "@/components/log-admin-action";
 
 export async function searchUsers(query: string) {
   await requirePermission("user.view");
