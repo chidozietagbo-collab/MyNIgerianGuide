@@ -82,6 +82,14 @@ export default function VerificationSection({
 
   function handleSubmit() {
     setError(null);
+    if (!cacNumber.trim()) {
+      setError("Please enter your CAC registration number.");
+      return;
+    }
+    if (documentUrls.length === 0) {
+      setError("Please upload your CAC certificate (or another supporting document) before submitting.");
+      return;
+    }
     startTransition(async () => {
       try {
         await submitVerificationRequest(businessPageId, cacNumber, documentUrls);
@@ -200,7 +208,7 @@ export default function VerificationSection({
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={isPending}
+              disabled={isPending || !cacNumber.trim() || documentUrls.length === 0}
               className="rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-green-500 disabled:opacity-60"
             >
               {isPending ? "Submitting…" : "Submit for review"}
