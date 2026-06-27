@@ -10,6 +10,7 @@ import {
   History,
   Tag,
   FileSearch,
+  UserCog,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
@@ -128,6 +129,13 @@ export default async function AdminDashboardPage() {
       description: "Immutable record of every admin action, platform-wide.",
       icon: History,
       requiredPermission: "admin.view_audit_log",
+    },
+    {
+      href: "/admin/staff",
+      label: "Staff management",
+      description: "Add admins and manage their roles.",
+      icon: UserCog,
+      requiredPermission: "admin.manage_staff",
     },
   ];
 
