@@ -4,7 +4,6 @@ import { useEffect, useState, useTransition } from "react";
 import { Search, UserPlus, ShieldCheck, ShieldOff } from "lucide-react";
 import {
   getAdminUsers,
-  getRoleTemplates,
   searchPromotableUsers,
   promoteUserToAdmin,
   inviteNewAdmin,
@@ -432,7 +431,7 @@ function AddAdminPanel({
           {isSearching && <p className="mt-2 text-xs text-ink-300">Searching…</p>}
           {!isSearching && query.trim() && results.length === 0 && (
             <p className="mt-2 text-xs text-ink-300">
-              No matching users found (they may already be an admin, or don't have an account yet — try inviting
+              No matching users found (they may already be an admin, or don&apos;t have an account yet — try inviting
               them instead).
             </p>
           )}
@@ -465,7 +464,7 @@ function AddAdminPanel({
             className={inputClass}
           />
           <p className="mt-1.5 text-xs text-ink-300">
-            They'll get an email to set up their account and sign in for the first time.
+            They&apos;ll get an email to set up their account and sign in for the first time.
           </p>
         </div>
       )}
