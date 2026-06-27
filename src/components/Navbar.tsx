@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Menu, X } from "lucide-react";
+import { Menu, X, ShieldCheck, Building2 } from "lucide-react";
 import Logo from "./Logo";
 import NotificationBell from "./NotificationBell";
 import { createClient } from "@/lib/supabase/client";
@@ -16,10 +16,13 @@ const navLinks = [
 
 type NavbarProps = {
   user: { email: string } | null;
+  isAdmin?: boolean;
+  ownedBusinessPages?: { name: string; slug: string }[];
 };
 
-export default function Navbar({ user }: NavbarProps) {
+export default function Navbar({ user, isAdmin = false, ownedBusinessPages = [] }: NavbarProps) {
   const [open, setOpen] = useState(false);
+  const [businessMenuOpen, setBusinessMenuOpen] = useState(false);
   const router = useRouter();
 
   async function handleLogout() {
@@ -47,6 +50,56 @@ export default function Navbar({ user }: NavbarProps) {
               {link.label}
             </Link>
           ))}
+
+          {/* Links to the owner's own page(s) — there's no separate
+              "business dashboard" route; /b/[slug] itself is the control
+              centre when viewed by its owner. One page links directly;
+              more than one shows a small dropdown to pick which. */}
+          {user && ownedBusinessPages.length === 1 && (
+            <Link
+              href={`/b/${ownedBusinessPages[0].slug}`}
+              className="flex items-center gap-1.5 text-sm font-medium text-ink-700 transition hover:text-green-600"
+            >
+              <Building2 className="h-4 w-4" />
+              My business
+            </Link>
+          )}
+          {user && ownedBusinessPages.length > 1 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setBusinessMenuOpen((v) => !v)}
+                className="flex items-center gap-1.5 text-sm font-medium text-ink-700 transition hover:text-green-600"
+              >
+                <Building2 className="h-4 w-4" />
+                My businesses
+              </button>
+              {businessMenuOpen && (
+                <div className="absolute left-0 top-full mt-2 w-56 rounded-md border border-ink-100 bg-white py-1 shadow-md">
+                  {ownedBusinessPages.map((bp) => (
+                    <Link
+                      key={bp.slug}
+                      href={`/b/${bp.slug}`}
+                      onClick={() => setBusinessMenuOpen(false)}
+                      className="block px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
+                    >
+                      {bp.name}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="flex items-center gap-1.5 text-sm font-medium text-ink-700 transition hover:text-green-600"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Admin
+            </Link>
+          )}
         </div>
 
         <div className="hidden items-center gap-3 md:flex">
@@ -112,6 +165,41 @@ export default function Navbar({ user }: NavbarProps) {
                 {link.label}
               </Link>
             ))}
+
+            {user && ownedBusinessPages.length > 0 && (
+              <>
+                <hr className="border-ink-100" />
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-300">
+                  {ownedBusinessPages.length === 1 ? "My business" : "My businesses"}
+                </p>
+                {ownedBusinessPages.map((bp) => (
+                  <Link
+                    key={bp.slug}
+                    href={`/b/${bp.slug}`}
+                    className="flex items-center gap-1.5 text-sm font-medium text-ink-700"
+                    onClick={() => setOpen(false)}
+                  >
+                    <Building2 className="h-4 w-4" />
+                    {bp.name}
+                  </Link>
+                ))}
+              </>
+            )}
+
+            {isAdmin && (
+              <>
+                <hr className="border-ink-100" />
+                <Link
+                  href="/admin"
+                  className="flex items-center gap-1.5 text-sm font-medium text-ink-700"
+                  onClick={() => setOpen(false)}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Admin
+                </Link>
+              </>
+            )}
+
             <hr className="border-ink-100" />
             {user ? (
               <>
