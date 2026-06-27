@@ -52,6 +52,10 @@ export async function createPost(businessPageId: string, content: string, mediaU
   );
 
   revalidatePath(`/b/${business.slug}`);
+  // Also revalidates the dashboard's per-page route — PostsSection is
+  // reused there too, and that route needs fresh post data after a
+  // create/edit/delete just as much as the public page does.
+  revalidatePath(`/business/dashboard/${businessPageId}`);
 }
 
 export async function updatePost(postId: string, content: string, mediaUrls: string[]) {
@@ -63,7 +67,7 @@ export async function updatePost(postId: string, content: string, mediaUrls: str
 
   const post = await prisma.post.findUnique({
     where: { id: postId },
-    select: { authorUserId: true, businessPage: { select: { slug: true } } },
+    select: { authorUserId: true, businessPageId: true, businessPage: { select: { slug: true } } },
   });
   if (!post || post.authorUserId !== user.id) {
     throw new Error("You don't own this post.");
@@ -80,6 +84,7 @@ export async function updatePost(postId: string, content: string, mediaUrls: str
   });
 
   revalidatePath(`/b/${post.businessPage.slug}`);
+  revalidatePath(`/business/dashboard/${post.businessPageId}`);
 }
 
 export async function deletePost(postId: string) {
@@ -91,7 +96,7 @@ export async function deletePost(postId: string) {
 
   const post = await prisma.post.findUnique({
     where: { id: postId },
-    select: { authorUserId: true, businessPage: { select: { slug: true } } },
+    select: { authorUserId: true, businessPageId: true, businessPage: { select: { slug: true } } },
   });
   if (!post || post.authorUserId !== user.id) {
     throw new Error("You don't own this post.");
@@ -99,4 +104,5 @@ export async function deletePost(postId: string) {
 
   await prisma.post.delete({ where: { id: postId } });
   revalidatePath(`/b/${post.businessPage.slug}`);
+  revalidatePath(`/business/dashboard/${post.businessPageId}`);
 }
