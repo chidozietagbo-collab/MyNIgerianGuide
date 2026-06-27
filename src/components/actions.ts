@@ -59,6 +59,8 @@ export async function addBusinessPhoto(businessPageId: string, url: string) {
   revalidatePath(`/b/${business.slug}`);
   revalidatePath(`/business/dashboard/${businessPageId}`);
 }
+
+export async function deleteBusinessPhoto(mediaId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
