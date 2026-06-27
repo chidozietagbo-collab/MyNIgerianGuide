@@ -260,22 +260,24 @@ function UserDetailView({
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-300">Business pages</p>
             <div className="mt-2 space-y-1.5">
               {detail.businessPages.map((bp) => (
-                <Link
+                <div
                   key={bp.id}
-                  href={`/b/${bp.slug}`}
-                  target="_blank"
-                  className="flex items-center justify-between rounded-md bg-ink-50 px-3 py-2 text-sm text-ink-700 hover:text-green-600"
+                  className="flex items-center justify-between rounded-md bg-ink-50 px-3 py-2 text-sm text-ink-700"
                 >
-                  <span className="flex items-center gap-1.5">
+                  <Link href={`/b/${bp.slug}`} target="_blank" className="flex items-center gap-1.5 hover:text-green-600">
                     {bp.name}
                     {bp.verificationStatus === "VERIFIED" && <BadgeCheck className="h-3.5 w-3.5 text-green-600" />}
-                  </span>
+                  </Link>
                   <span className="text-xs text-ink-300">{bp.isPublished ? "Published" : "Unpublished"}</span>
-                </Link>
+                </div>
               ))}
             </div>
             <p className="mt-1 text-xs text-ink-300">
-              To unpublish a business page, open it above and use the moderation queue or business tools.
+              To unpublish, verify, or delete a business page,{" "}
+              <Link href="/admin/business-pages" className="text-green-600 hover:underline">
+                search for it in business page management
+              </Link>
+              .
             </p>
           </div>
         )}
