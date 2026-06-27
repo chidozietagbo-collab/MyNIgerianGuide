@@ -85,4 +85,5 @@ export async function submitVerificationRequest(
   });
 
   revalidatePath(`/b/${business.slug}`);
+  revalidatePath(`/business/dashboard/${businessPageId}`);
 }
