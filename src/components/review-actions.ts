@@ -81,6 +81,7 @@ export async function createReview(businessPageId: string, rating: number, body:
   });
 
   revalidatePath(`/b/${business.slug}`);
+  revalidatePath(`/business/dashboard/${businessPageId}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -110,6 +111,7 @@ export async function updateReview(reviewId: string, rating: number, body: strin
 
   await recalculateAverageRating(review.businessPage.id);
   revalidatePath(`/b/${review.businessPage.slug}`);
+  revalidatePath(`/business/dashboard/${review.businessPage.id}`);
 }
 
 export async function deleteReview(reviewId: string) {
@@ -126,6 +128,7 @@ export async function deleteReview(reviewId: string) {
   await prisma.review.delete({ where: { id: reviewId } });
   await recalculateAverageRating(review.businessPage.id);
   revalidatePath(`/b/${review.businessPage.slug}`);
+  revalidatePath(`/business/dashboard/${review.businessPage.id}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +165,7 @@ export async function replyToReview(reviewId: string, response: string) {
   });
 
   revalidatePath(`/b/${review.businessPage.slug}`);
+  revalidatePath(`/business/dashboard/${review.businessPage.id}`);
 }
 
 export async function deleteReply(reviewId: string) {
@@ -169,7 +173,7 @@ export async function deleteReply(reviewId: string) {
 
   const review = await prisma.review.findUnique({
     where: { id: reviewId },
-    select: { businessPage: { select: { slug: true, ownerUserId: true } } },
+    select: { businessPage: { select: { id: true, slug: true, ownerUserId: true } } },
   });
   if (!review || review.businessPage.ownerUserId !== user.id) {
     throw new Error("You don't own this business page.");
@@ -181,4 +185,5 @@ export async function deleteReply(reviewId: string) {
   });
 
   revalidatePath(`/b/${review.businessPage.slug}`);
+  revalidatePath(`/business/dashboard/${review.businessPage.id}`);
 }
