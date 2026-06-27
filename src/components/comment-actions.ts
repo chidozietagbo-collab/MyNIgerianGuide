@@ -13,12 +13,21 @@ async function requireSignedIn() {
   return user;
 }
 
-async function getPostPath(postId: string) {
+async function getPostContext(postId: string) {
   const post = await prisma.post.findUnique({
     where: { id: postId },
-    select: { businessPage: { select: { slug: true } } },
+    select: { businessPageId: true, businessPage: { select: { slug: true } } },
   });
-  return post ? `/b/${post.businessPage.slug}` : null;
+  return post ? { publicPath: `/b/${post.businessPage.slug}`, businessPageId: post.businessPageId } : null;
+}
+
+function revalidatePostPaths(context: { publicPath: string; businessPageId: string } | null) {
+  if (!context) return;
+  revalidatePath(context.publicPath);
+  // Also revalidates the dashboard's per-page route, since PostsSection is
+  // reused there too — without this, only the public /b/[slug] page would
+  // ever see fresh data after a comment or like.
+  revalidatePath(`/business/dashboard/${context.businessPageId}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -36,8 +45,7 @@ export async function addComment(postId: string, content: string) {
     data: { postId, authorUserId: user.id, content: trimmed },
   });
 
-  const path = await getPostPath(postId);
-  if (path) revalidatePath(path);
+  revalidatePostPaths(await getPostContext(postId));
 }
 
 export async function updateComment(commentId: string, content: string) {
@@ -58,8 +66,7 @@ export async function updateComment(commentId: string, content: string) {
 
   await prisma.comment.update({ where: { id: commentId }, data: { content: trimmed } });
 
-  const path = await getPostPath(comment.postId);
-  if (path) revalidatePath(path);
+  revalidatePostPaths(await getPostContext(comment.postId));
 }
 
 // Deletion is allowed for the comment's own author OR the owner of the
@@ -80,8 +87,7 @@ export async function deleteComment(commentId: string) {
 
   await prisma.comment.delete({ where: { id: commentId } });
 
-  const path = await getPostPath(comment.postId);
-  if (path) revalidatePath(path);
+  revalidatePostPaths(await getPostContext(comment.postId));
 }
 
 // ---------------------------------------------------------------------------
@@ -100,8 +106,7 @@ export async function toggleLike(postId: string) {
     await prisma.postLike.create({ data: { postId, userId: user.id } });
   }
 
-  const path = await getPostPath(postId);
-  if (path) revalidatePath(path);
+  revalidatePostPaths(await getPostContext(postId));
 
   return { liked: !existing };
 }
