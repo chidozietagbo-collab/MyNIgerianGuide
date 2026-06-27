@@ -68,7 +68,7 @@ type BusinessPageManagementClientProps = {
 
 const VERIFICATION_STYLES: Record<string, string> = {
   UNVERIFIED: "bg-ink-100 text-ink-300",
-  PENDING: "bg-amber-50 text-amber-600",
+  PENDING: "bg-[#FFFBEB] text-[#B45309]",
   VERIFIED: "bg-green-50 text-green-600",
   REJECTED: "bg-red-50 text-danger",
   REVOKED: "bg-red-50 text-danger",
