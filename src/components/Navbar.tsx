@@ -22,7 +22,6 @@ type NavbarProps = {
 
 export default function Navbar({ user, isAdmin = false, ownedBusinessPages = [] }: NavbarProps) {
   const [open, setOpen] = useState(false);
-  const [businessMenuOpen, setBusinessMenuOpen] = useState(false);
   const router = useRouter();
 
   async function handleLogout() {
@@ -51,44 +50,18 @@ export default function Navbar({ user, isAdmin = false, ownedBusinessPages = [] 
             </Link>
           ))}
 
-          {/* Links to the owner's own page(s) — there's no separate
-              "business dashboard" route; /b/[slug] itself is the control
-              centre when viewed by its owner. One page links directly;
-              more than one shows a small dropdown to pick which. */}
-          {user && ownedBusinessPages.length === 1 && (
+          {/* Single link to the dashboard regardless of how many pages
+              are owned — the dashboard itself has a page switcher for
+              owners with more than one, so the navbar doesn't need its
+              own dropdown anymore. */}
+          {user && ownedBusinessPages.length > 0 && (
             <Link
-              href={`/b/${ownedBusinessPages[0].slug}`}
+              href="/business/dashboard"
               className="flex items-center gap-1.5 text-sm font-medium text-ink-700 transition hover:text-green-600"
             >
               <Building2 className="h-4 w-4" />
-              My business
+              {ownedBusinessPages.length === 1 ? "My business" : "My businesses"}
             </Link>
-          )}
-          {user && ownedBusinessPages.length > 1 && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setBusinessMenuOpen((v) => !v)}
-                className="flex items-center gap-1.5 text-sm font-medium text-ink-700 transition hover:text-green-600"
-              >
-                <Building2 className="h-4 w-4" />
-                My businesses
-              </button>
-              {businessMenuOpen && (
-                <div className="absolute left-0 top-full mt-2 w-56 rounded-md border border-ink-100 bg-white py-1 shadow-md">
-                  {ownedBusinessPages.map((bp) => (
-                    <Link
-                      key={bp.slug}
-                      href={`/b/${bp.slug}`}
-                      onClick={() => setBusinessMenuOpen(false)}
-                      className="block px-3 py-2 text-sm text-ink-700 hover:bg-ink-50"
-                    >
-                      {bp.name}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
           )}
 
           {isAdmin && (
@@ -169,20 +142,14 @@ export default function Navbar({ user, isAdmin = false, ownedBusinessPages = [] 
             {user && ownedBusinessPages.length > 0 && (
               <>
                 <hr className="border-ink-100" />
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-300">
+                <Link
+                  href="/business/dashboard"
+                  className="flex items-center gap-1.5 text-sm font-medium text-ink-700"
+                  onClick={() => setOpen(false)}
+                >
+                  <Building2 className="h-4 w-4" />
                   {ownedBusinessPages.length === 1 ? "My business" : "My businesses"}
-                </p>
-                {ownedBusinessPages.map((bp) => (
-                  <Link
-                    key={bp.slug}
-                    href={`/b/${bp.slug}`}
-                    className="flex items-center gap-1.5 text-sm font-medium text-ink-700"
-                    onClick={() => setOpen(false)}
-                  >
-                    <Building2 className="h-4 w-4" />
-                    {bp.name}
-                  </Link>
-                ))}
+                </Link>
               </>
             )}
 
