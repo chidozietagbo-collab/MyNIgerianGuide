@@ -57,9 +57,8 @@ export async function addBusinessPhoto(businessPageId: string, url: string) {
   });
 
   revalidatePath(`/b/${business.slug}`);
+  revalidatePath(`/business/dashboard/${businessPageId}`);
 }
-
-export async function deleteBusinessPhoto(mediaId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -68,7 +67,7 @@ export async function deleteBusinessPhoto(mediaId: string) {
 
   const media = await prisma.media.findUnique({
     where: { id: mediaId },
-    select: { url: true, businessPage: { select: { ownerUserId: true, slug: true } } },
+    select: { url: true, businessPageId: true, businessPage: { select: { ownerUserId: true, slug: true } } },
   });
   if (!media || !media.businessPage || media.businessPage.ownerUserId !== user.id) {
     throw new Error("You don't own this photo.");
@@ -87,6 +86,9 @@ export async function deleteBusinessPhoto(mediaId: string) {
 
   await prisma.media.delete({ where: { id: mediaId } });
   revalidatePath(`/b/${media.businessPage.slug}`);
+  if (media.businessPageId) {
+    revalidatePath(`/business/dashboard/${media.businessPageId}`);
+  }
 }
 
 // ===========================================================================
@@ -154,6 +156,7 @@ export async function updateBusinessHeader(input: UpdateHeaderInput) {
   if (slug !== business.slug) {
     revalidatePath(`/b/${slug}`);
   }
+  revalidatePath(`/business/dashboard/${input.businessPageId}`);
   return { slug, categoryChanged };
 }
 
@@ -176,6 +179,7 @@ export async function updateBusinessAbout(
   });
 
   revalidatePath(`/b/${business.slug}`);
+  revalidatePath(`/business/dashboard/${businessPageId}`);
 }
 
 // ===========================================================================
@@ -203,6 +207,7 @@ export async function updateBusinessContact(input: UpdateContactInput) {
   });
 
   revalidatePath(`/b/${business.slug}`);
+  revalidatePath(`/business/dashboard/${input.businessPageId}`);
 }
 
 // ===========================================================================
@@ -219,6 +224,7 @@ export async function updateBusinessHours(businessPageId: string, hours: HoursSt
   });
 
   revalidatePath(`/b/${business.slug}`);
+  revalidatePath(`/business/dashboard/${businessPageId}`);
 }
 
 // ===========================================================================
@@ -235,6 +241,7 @@ export async function updateBusinessKeywords(businessPageId: string, keywordIds:
   ]);
 
   revalidatePath(`/b/${business.slug}`);
+  revalidatePath(`/business/dashboard/${businessPageId}`);
 }
 
 export async function searchKeywordsForEdit(query: string, categoryId: string) {
