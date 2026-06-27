@@ -1,6 +1,5 @@
 import { cache } from "react";
 import { notFound } from "next/navigation";
-import { after } from "next/server";
 import type { Metadata } from "next";
 import { BadgeCheck, Clock, Globe, Mail, MapPin, Phone } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -142,26 +141,22 @@ export default async function BusinessPage({ params }: PageProps) {
   const isOwner = user?.id === business.ownerUserId;
 
   // Records a page view for the dashboard's "page views this week vs last
-  // week" stat (brief Section 11). Uses after() so the write happens once
-  // the response has already been sent to the visitor — they shouldn't
-  // wait on an analytics insert to see the page — while still reliably
-  // completing rather than risking truncation from a bare unawaited
-  // promise in a serverless environment. Owner visits are excluded so an
-  // owner checking their own page doesn't inflate their own stats.
+  // week" stat (brief Section 11). Not awaited — a visitor shouldn't wait
+  // on an analytics write to see the page. (Next.js's after() would be a
+  // safer way to do this, but it isn't available in the installed
+  // Next.js 14.2.35 — that import doesn't exist until later versions.)
+  // Owner visits are excluded so an owner checking their own page doesn't
+  // inflate their own stats.
   if (!isOwner) {
-    after(async () => {
-      try {
-        await prisma.pageView.create({
-          data: {
-            businessPageId: business.id,
-            userId: user?.id ?? null,
-            source: "direct",
-          },
-        });
-      } catch (err) {
-        console.error("Failed to record page view:", err);
-      }
-    });
+    prisma.pageView
+      .create({
+        data: {
+          businessPageId: business.id,
+          userId: user?.id ?? null,
+          source: "direct",
+        },
+      })
+      .catch((err) => console.error("Failed to record page view:", err));
   }
 
   const [followerCount, currentUserFollow, latestVerificationRequest] = await Promise.all([
