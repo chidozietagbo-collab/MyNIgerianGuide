@@ -503,6 +503,12 @@ model SponsoredListing {
   endDate         DateTime
   isActive        Boolean       @default(true)
   priceNaira      Int
+  // The Paystack transaction reference that paid for this listing.
+  // Unique at the database level so a webhook retry or a user revisiting
+  // the callback URL can never create a second listing for the same
+  // payment — this is the real idempotency guard, not a time-window
+  // heuristic.
+  paystackReference String?     @unique
   createdAt       DateTime      @default(now())
 
   @@map("sponsored_listings")
