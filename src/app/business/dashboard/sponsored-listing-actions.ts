@@ -199,13 +199,6 @@ export async function confirmSponsoredListingPayment(reference: string) {
   });
   const verifyData = await verifyResponse.json();
 
-  // Temporary full-response logging — every previous attempt to narrow
-  // this down from partial log lines failed to actually explain the
-  // mismatch between what Paystack's dashboard showed (Success, correct
-  // amount) and what this function concluded. Logging the entire raw
-  // response removes all guesswork for the next test attempt.
-  console.error("FULL Paystack verify response:", JSON.stringify(verifyData));
-
   if (!verifyResponse.ok || !verifyData.status || verifyData.data?.status !== "success") {
     console.error("Paystack verify did not return success:", {
       reference,
@@ -239,23 +232,38 @@ export async function confirmSponsoredListingPayment(reference: string) {
     };
   }
 
-  const metadata = rawMetadata as {
-    businessPageId: string;
-    placementType: "TOP_OF_SEARCH" | "FEATURED_BADGE";
-    durationDays: number;
-    keywordId: string;
-    keywordName: string;
-    localGovernmentName: string;
-    priceNaira: number;
+  // Confirmed via full-response logging on a real test transaction:
+  // Paystack returns metadata values as STRINGS, even when sent as real
+  // numbers at initiation — e.g. priceNaira came back as "17250", not
+  // 17250. This is real, observed Paystack behavior, not a guess. Every
+  // numeric field is explicitly converted here rather than trusted by
+  // type, since a bare type assertion (`as {...}`) let this through
+  // silently before and broke the amount comparison below on every
+  // single payment, even fully successful ones for the correct amount.
+  const rawMeta = rawMetadata as Record<string, unknown>;
+  const metadata = {
+    businessPageId: String(rawMeta.businessPageId ?? ""),
+    placementType: rawMeta.placementType as "TOP_OF_SEARCH" | "FEATURED_BADGE",
+    durationDays: Number(rawMeta.durationDays),
+    keywordId: String(rawMeta.keywordId ?? ""),
+    keywordName: String(rawMeta.keywordName ?? ""),
+    localGovernmentName: String(rawMeta.localGovernmentName ?? ""),
+    priceNaira: Number(rawMeta.priceNaira),
   };
 
   if (
     !metadata.businessPageId ||
     !metadata.placementType ||
     !metadata.durationDays ||
+    Number.isNaN(metadata.durationDays) ||
     !metadata.keywordId ||
-    typeof metadata.priceNaira !== "number"
+    Number.isNaN(metadata.priceNaira)
   ) {
+    console.error("Sponsored listing metadata failed validation after normalization:", {
+      reference,
+      metadata,
+      rawMetadata,
+    });
     return {
       success: false as const,
       reason: "Payment confirmed, but the listing details were incomplete. Contact support with this reference: " + reference,
