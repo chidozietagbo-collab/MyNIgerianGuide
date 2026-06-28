@@ -173,12 +173,14 @@ export default async function BusinessPage({ params }: PageProps) {
           select: { cacNumber: true, status: true, reviewNotes: true, createdAt: true },
         })
       : null,
-    prisma.sponsoredListing.findFirst({
+    prisma.adCampaign.findFirst({
       where: {
         businessPageId: business.id,
         placementType: "FEATURED_BADGE",
         isActive: true,
+        isPaused: false,
         endDate: { gte: new Date() },
+        creativeApprovalStatus: { in: ["NONE", "APPROVED"] },
       },
       select: { id: true },
     }),
@@ -252,7 +254,10 @@ export default async function BusinessPage({ params }: PageProps) {
               </span>
             )}
             {hasFeaturedBadge && (
-              <span className="flex items-center gap-1 rounded-full bg-[#F5F3FF] px-2.5 py-0.5 text-xs font-medium text-[#7C3AED]">
+              <span
+                title="This business paid for featured placement on MyNigerianGuide."
+                className="flex items-center gap-1 rounded-full bg-[#F5F3FF] px-2.5 py-0.5 text-xs font-medium text-[#7C3AED]"
+              >
                 ⭐ Featured
               </span>
             )}
