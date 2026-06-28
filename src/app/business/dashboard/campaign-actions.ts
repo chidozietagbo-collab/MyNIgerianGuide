@@ -16,7 +16,7 @@ async function requireOwnership(businessPageId: string) {
 
   const business = await prisma.businessPage.findUnique({
     where: { id: businessPageId },
-    select: { ownerUserId: true, name: true, slug: true, isPublished: true },
+    select: { ownerUserId: true, name: true, slug: true, isPublished: true, categoryId: true },
   });
   if (!business || business.ownerUserId !== user.id) {
     throw new Error("You don't own this business page.");
@@ -25,9 +25,11 @@ async function requireOwnership(businessPageId: string) {
   return { user, business };
 }
 
-// The business's own tagged keywords — same reasoning as the original
-// boost flow: a campaign only makes sense for a service the business
-// already advertises.
+// The business's own tagged keywords — shown as quick-pick defaults
+// since they're the most likely targets, but per the founder's explicit
+// feedback, a campaign is no longer limited to ONLY these. See
+// searchKeywordsForCampaign below for targeting any approved keyword in
+// the business's category.
 export async function getBusinessKeywordsForCampaign(businessPageId: string) {
   await requireOwnership(businessPageId);
 
@@ -37,6 +39,32 @@ export async function getBusinessKeywordsForCampaign(businessPageId: string) {
     orderBy: { keyword: { name: "asc" } },
   });
   return rows.map((r) => r.keyword);
+}
+
+// Lets a business target any approved keyword within its OWN category —
+// not limited to what's already tagged on the page, per the founder's
+// explicit feedback ("ideally they should be able to expand beyond
+// those keywords"). Scoped to the business's own category rather than
+// every keyword platform-wide, since a plumber buying visibility for
+// "wedding photography" wouldn't make sense for anyone — reuses the
+// same scoping reasoning as searchKeywordsForEdit in
+// src/components/actions.ts, which already does the equivalent search
+// during page setup.
+export async function searchKeywordsForCampaign(businessPageId: string, query: string) {
+  const { business } = await requireOwnership(businessPageId);
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  return prisma.keyword.findMany({
+    where: {
+      status: "APPROVED",
+      categoryId: business.categoryId,
+      name: { contains: trimmed, mode: "insensitive" },
+    },
+    orderBy: { usageCount: "desc" },
+    take: 10,
+    select: { id: true, name: true },
+  });
 }
 
 // Targeting is Nigeria-wide per the founder's explicit decision (a
@@ -168,6 +196,31 @@ export async function resumeCampaign(campaignId: string) {
   }
 
   await prisma.adCampaign.update({ where: { id: campaignId }, data: { isPaused: false } });
+}
+
+// Permanently stops a campaign — distinct from pause, which is meant to
+// be temporary and resumable. No refund for unused time: per the
+// founder's original decision to deactivate-rather-than-delete admin
+// records for audit purposes, and since no refund policy was specified
+// here, the safer default is "no surprise charges or refunds" — the UI
+// calling this must say so plainly before letting someone confirm.
+export async function endCampaign(campaignId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const campaign = await prisma.adCampaign.findUnique({
+    where: { id: campaignId },
+    select: { businessPage: { select: { ownerUserId: true } } },
+  });
+  if (!campaign || campaign.businessPage.ownerUserId !== user.id) {
+    throw new Error("You don't own this campaign.");
+  }
+
+  await prisma.adCampaign.update({
+    where: { id: campaignId },
+    data: { isActive: false, isPaused: false },
+  });
 }
 
 // Initiates payment for a multi-target campaign. Nothing is written to
