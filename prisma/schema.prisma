@@ -119,6 +119,8 @@ model User {
   verificationsReviewed  VerificationRequest[]  @relation("ReviewedVerifications")
   adminsCreated          AdminUser[]            @relation("CreatedByAdmin")
   rolesAssigned          UserRole[]             @relation("RoleAssignedBy")
+  adCreativesReviewed    AdCampaign[]           @relation("ReviewedAdCreative")
+  adPriceOverridesSet    AdPriceOverride[]      @relation("SetAdPriceOverride")
 
   @@map("users")
 }
@@ -231,6 +233,8 @@ model LocalGovernment {
 
   towns         Town[]
   businessPages BusinessPage[]
+  adCampaignTargets AdCampaignTarget[]
+  adPriceOverrides  AdPriceOverride[]
 
   @@unique([stateId, name])
   @@map("local_governments")
@@ -290,6 +294,8 @@ model Keyword {
 
   businessKeywords  BusinessKeyword[]
   sponsoredListings SponsoredListing[]
+  adCampaignTargets AdCampaignTarget[]
+  adPriceOverrides  AdPriceOverride[]
 
   @@index([name])
   @@index([status])
@@ -337,6 +343,7 @@ model BusinessPage {
   media                Media[]
   verificationRequests VerificationRequest[]
   sponsoredListings    SponsoredListing[]
+  adCampaigns          AdCampaign[]
   pageViews            PageView[]
 
   @@index([stateId, localGovernmentId, townId])
@@ -512,6 +519,98 @@ model SponsoredListing {
   createdAt       DateTime      @default(now())
 
   @@map("sponsored_listings")
+}
+
+// Superseded by AdCampaign below for new purchases — kept in place as a
+// historical record of the platform's first real sponsored listing
+// payment, which was migrated into AdCampaign rather than deleted. Never
+// write new rows here.
+
+enum CreativeApprovalStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// The new top-level unit for sponsored advertising, replacing the
+// single-target SponsoredListing above. A business can run several of
+// these simultaneously (founder's explicit decision), each with its own
+// name, optional creative (image + caption — also founder's explicit
+// decision, on top of the original placement-only brief scope), and one
+// or more AdCampaignTarget rows for keyword+city combinations.
+model AdCampaign {
+  id                      String                 @id @default(uuid())
+  businessPageId          String
+  businessPage            BusinessPage           @relation(fields: [businessPageId], references: [id])
+  name                    String
+  placementType           PlacementType
+  imageUrl                String?
+  caption                 String?
+  // NONE when there's no creative at all (placement-only campaign, no
+  // image/caption) — distinct from PENDING, since a campaign with no
+  // creative never needs admin review of anything.
+  creativeApprovalStatus  CreativeApprovalStatus @default(NONE)
+  creativeReviewNotes     String?
+  creativeReviewedById    String?
+  creativeReviewedBy      User?                  @relation("ReviewedAdCreative", fields: [creativeReviewedById], references: [id])
+  creativeReviewedAt      DateTime?
+  startDate               DateTime
+  endDate                 DateTime
+  totalPriceNaira         Int
+  isActive                Boolean                @default(true)
+  isPaused                Boolean                @default(false)
+  paystackReference       String?                @unique
+  createdAt               DateTime               @default(now())
+
+  targets                 AdCampaignTarget[]
+
+  @@map("ad_campaigns")
+}
+
+// One row per keyword+city combination chosen for a campaign. Each
+// carries its own price at purchase time — campaign.totalPriceNaira is
+// the sum of these — per the founder's explicit pricing decision (sum
+// of combinations, not one flat campaign price covering everything
+// chosen). impressionCount/clickCount back the performance reporting
+// the founder asked for.
+model AdCampaignTarget {
+  id                String         @id @default(uuid())
+  campaignId        String
+  campaign          AdCampaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  keywordId         String
+  keyword           Keyword        @relation(fields: [keywordId], references: [id])
+  localGovernmentId String
+  localGovernment   LocalGovernment @relation(fields: [localGovernmentId], references: [id])
+  priceNaira        Int
+  impressionCount   Int            @default(0)
+  clickCount        Int            @default(0)
+  createdAt         DateTime       @default(now())
+
+  @@map("ad_campaign_targets")
+}
+
+// Admin-set fixed price overriding the competitiveness formula for a
+// specific keyword and/or city, per the founder's explicit decision to
+// keep the formula as the default with admin override capability on
+// top. Either foreign key can be null: keywordId-only applies across all
+// cities for that keyword, localGovernmentId-only applies across all
+// keywords in that city, both-set applies to that exact combination
+// only. fixedPriceNairaPer30Days is stored per-30-days and scaled to
+// whatever duration is actually requested.
+model AdPriceOverride {
+  id                       String          @id @default(uuid())
+  keywordId                String?
+  keyword                  Keyword?        @relation(fields: [keywordId], references: [id])
+  localGovernmentId        String?
+  localGovernment          LocalGovernment? @relation(fields: [localGovernmentId], references: [id])
+  fixedPriceNairaPer30Days Int
+  setById                  String
+  setBy                    User            @relation("SetAdPriceOverride", fields: [setById], references: [id])
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  @@map("ad_price_overrides")
 }
 
 // ---------- Notifications & analytics ----------
