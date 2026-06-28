@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BadgeCheck, MapPin, Search as SearchIcon } from "lucide-react";
-import { searchBusinesses, suggestBusinesses, type SearchResult, type BusinessSuggestion } from "./actions";
+import { searchBusinesses, suggestBusinesses, recordAdClick, type SearchResult, type BusinessSuggestion } from "./actions";
 
 const inputClass =
   "w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500";
@@ -172,6 +172,11 @@ function SearchPageInner() {
           <Link
             key={b.id}
             href={`/b/${b.slug}`}
+            onClick={() => {
+              if (b.isSponsored && b.sponsoredTargetId) {
+                recordAdClick(b.sponsoredTargetId);
+              }
+            }}
             className={
               b.isSponsored
                 ? "block rounded-lg border border-[#2563EB]/30 bg-white p-5 shadow-sm transition hover:border-[#2563EB] hover:shadow-md"
@@ -191,7 +196,10 @@ function SearchPageInner() {
                     )}
                   </div>
                   {b.isSponsored && (
-                    <span className="flex items-center gap-1 rounded-full bg-[#EFF6FF] px-2.5 py-0.5 text-xs font-medium text-[#2563EB]">
+                    <span
+                      title="This business paid to appear above regular results for this search."
+                      className="flex items-center gap-1 rounded-full bg-[#EFF6FF] px-2.5 py-0.5 text-xs font-medium text-[#2563EB]"
+                    >
                       📌 Sponsored
                     </span>
                   )}
