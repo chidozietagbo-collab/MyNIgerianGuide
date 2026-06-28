@@ -24,7 +24,7 @@ import EditableContact from "@/components/EditableContact";
 import EditableHours from "@/components/EditableHours";
 import EditableKeywords from "@/components/EditableKeywords";
 import PhotoGallery from "@/components/PhotoGallery";
-import BoostListingPanel from "./BoostListingPanel";
+import CampaignsPanel from "./CampaignsPanel";
 import {
   getDashboardOverview,
   getCompletenessScore,
@@ -87,7 +87,7 @@ const TABS = [
   { id: "overview", label: "Overview", icon: BarChart3 },
   { id: "posts", label: "Posts", icon: FileText },
   { id: "reviews", label: "Reviews", icon: MessageSquare },
-  { id: "boost", label: "Boost", icon: Rocket },
+  { id: "boost", label: "Campaigns", icon: Rocket },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ] as const;
 
@@ -224,7 +224,7 @@ function BusinessDashboardClientInner({
           <>
             {boostResult === "success" && (
               <p className="mb-4 rounded-md bg-green-50 px-3 py-2.5 text-sm text-green-600">
-                Payment confirmed — your sponsored listing is now active.
+                Payment confirmed — your campaign is now active.
               </p>
             )}
             {boostResult === "failed" && (
@@ -238,7 +238,7 @@ function BusinessDashboardClientInner({
                 shortly — check back in a few minutes before trying again.
               </p>
             )}
-            <BoostListingPanel businessPageId={business.id} />
+            <CampaignsPanel businessPageId={business.id} />
           </>
         )}
 
