@@ -172,17 +172,28 @@ function SearchPageInner() {
           <Link
             key={b.id}
             href={`/b/${b.slug}`}
-            className="block rounded-lg border border-ink-100 bg-white p-5 shadow-sm transition hover:border-green-500 hover:shadow-md"
+            className={
+              b.isSponsored
+                ? "block rounded-lg border border-[#2563EB]/30 bg-white p-5 shadow-sm transition hover:border-[#2563EB] hover:shadow-md"
+                : "block rounded-lg border border-ink-100 bg-white p-5 shadow-sm transition hover:border-green-500 hover:shadow-md"
+            }
           >
             <div className="flex items-start gap-4">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-green-600 font-display text-base font-bold text-white">
                 {b.name.trim().charAt(0).toUpperCase() || "?"}
               </span>
               <div className="flex-1">
-                <div className="flex items-center gap-1.5">
-                  <h2 className="font-display text-base font-semibold text-ink-900">{b.name}</h2>
-                  {b.verificationStatus === "VERIFIED" && (
-                    <BadgeCheck className="h-4 w-4 text-green-600" />
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5">
+                    <h2 className="font-display text-base font-semibold text-ink-900">{b.name}</h2>
+                    {b.verificationStatus === "VERIFIED" && (
+                      <BadgeCheck className="h-4 w-4 text-green-600" />
+                    )}
+                  </div>
+                  {b.isSponsored && (
+                    <span className="flex items-center gap-1 rounded-full bg-[#EFF6FF] px-2.5 py-0.5 text-xs font-medium text-[#2563EB]">
+                      📌 Sponsored
+                    </span>
                   )}
                 </div>
                 <p className="mt-0.5 flex items-center gap-1 text-sm text-ink-500">
