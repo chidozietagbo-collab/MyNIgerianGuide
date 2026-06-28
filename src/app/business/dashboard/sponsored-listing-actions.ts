@@ -199,6 +199,13 @@ export async function confirmSponsoredListingPayment(reference: string) {
   });
   const verifyData = await verifyResponse.json();
 
+  // Temporary full-response logging — every previous attempt to narrow
+  // this down from partial log lines failed to actually explain the
+  // mismatch between what Paystack's dashboard showed (Success, correct
+  // amount) and what this function concluded. Logging the entire raw
+  // response removes all guesswork for the next test attempt.
+  console.error("FULL Paystack verify response:", JSON.stringify(verifyData));
+
   if (!verifyResponse.ok || !verifyData.status || verifyData.data?.status !== "success") {
     console.error("Paystack verify did not return success:", {
       reference,
