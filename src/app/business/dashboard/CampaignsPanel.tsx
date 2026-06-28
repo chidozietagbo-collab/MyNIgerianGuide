@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Rocket, TrendingUp, Star, Plus, Pause, Play, Image as ImageIcon, X } from "lucide-react";
+import { Rocket, TrendingUp, Star, Plus, Pause, Play, Square, Image as ImageIcon, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   getBusinessKeywordsForCampaign,
+  searchKeywordsForCampaign,
   getAllStatesForCampaign,
   getLocalGovernmentsForCampaign,
   getCampaignTargetsPricing,
@@ -12,6 +13,7 @@ import {
   initiateCampaignPurchase,
   pauseCampaign,
   resumeCampaign,
+  endCampaign,
   type CampaignTargetInput,
 } from "./campaign-actions";
 import { DURATION_OPTIONS, type DurationDays } from "@/lib/sponsored-pricing";
@@ -57,6 +59,7 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+  const [confirmingEndId, setConfirmingEndId] = useState<string | null>(null);
 
   async function refresh() {
     try {
@@ -88,6 +91,21 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't update this campaign.");
+    } finally {
+      setPendingActionId(null);
+    }
+  }
+
+  async function handleEndCampaign(campaign: OwnedCampaign) {
+    setPendingActionId(campaign.id);
+    setError(null);
+    try {
+      await endCampaign(campaign.id);
+      setMessage(`"${campaign.name}" ended.`);
+      setConfirmingEndId(null);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't end this campaign.");
     } finally {
       setPendingActionId(null);
     }
@@ -199,24 +217,61 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
             </div>
 
             {!campaign.isExpired && (
-              <button
-                type="button"
-                onClick={() => handlePauseToggle(campaign)}
-                disabled={pendingActionId === campaign.id}
-                className="mt-3 flex items-center gap-1.5 rounded-md border border-ink-100 px-3 py-1.5 text-xs font-semibold text-ink-700 hover:border-ink-300 disabled:opacity-50"
-              >
-                {campaign.isPaused ? (
-                  <>
-                    <Play className="h-3.5 w-3.5" />
-                    Resume
-                  </>
-                ) : (
-                  <>
-                    <Pause className="h-3.5 w-3.5" />
-                    Pause
-                  </>
-                )}
-              </button>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePauseToggle(campaign)}
+                  disabled={pendingActionId === campaign.id}
+                  className="flex items-center gap-1.5 rounded-md border border-ink-100 px-3 py-1.5 text-xs font-semibold text-ink-700 hover:border-ink-300 disabled:opacity-50"
+                >
+                  {campaign.isPaused ? (
+                    <>
+                      <Play className="h-3.5 w-3.5" />
+                      Resume
+                    </>
+                  ) : (
+                    <>
+                      <Pause className="h-3.5 w-3.5" />
+                      Pause
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingEndId(confirmingEndId === campaign.id ? null : campaign.id)}
+                  disabled={pendingActionId === campaign.id}
+                  className="flex items-center gap-1.5 rounded-md border border-danger px-3 py-1.5 text-xs font-semibold text-danger hover:bg-red-50 disabled:opacity-50"
+                >
+                  <Square className="h-3.5 w-3.5" />
+                  End campaign
+                </button>
+              </div>
+            )}
+
+            {confirmingEndId === campaign.id && (
+              <div className="mt-3 space-y-2 rounded-md bg-red-50 p-3">
+                <p className="text-sm text-danger">
+                  This permanently stops &quot;{campaign.name}&quot; right away. There&apos;s no refund for the
+                  remaining time — this can&apos;t be undone.
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleEndCampaign(campaign)}
+                    disabled={pendingActionId === campaign.id}
+                    className="rounded-md bg-danger px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    Yes, end it
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingEndId(null)}
+                    className="text-xs text-ink-500"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         ))}
@@ -245,6 +300,13 @@ function CreateCampaignForm({
   const [pendingKeywordId, setPendingKeywordId] = useState<string | null>(null);
   const [pendingLgaId, setPendingLgaId] = useState<string | null>(null);
   const [targets, setTargets] = useState<CampaignTargetInput[]>([]);
+  const [keywordSearchQuery, setKeywordSearchQuery] = useState("");
+  const [keywordSearchResults, setKeywordSearchResults] = useState<Keyword[]>([]);
+  // All keywords this form has ever known about — tagged ones plus
+  // anything found via search — so price/target display lookups (which
+  // search this combined list by id) work correctly for searched
+  // keywords too, not just the ones tagged on the business page.
+  const [allKnownKeywords, setAllKnownKeywords] = useState<Keyword[]>([]);
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -261,12 +323,42 @@ function CreateCampaignForm({
     Promise.all([getBusinessKeywordsForCampaign(businessPageId), getAllStatesForCampaign()])
       .then(([kw, st]) => {
         setKeywords(kw);
+        setAllKnownKeywords(kw);
         setStates(st);
         if (kw.length > 0) setPendingKeywordId(kw[0].id);
       })
       .catch((e) => onError(e instanceof Error ? e.message : "Couldn't load campaign options."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessPageId]);
+
+  // Lets a business target any approved keyword in its own category,
+  // not just ones already tagged on its page — per the founder's
+  // explicit feedback. Debounced lightly via a timeout rather than a
+  // dedicated hook, since this is the only place in this form that
+  // needs it.
+  useEffect(() => {
+    const trimmed = keywordSearchQuery.trim();
+    if (!trimmed) {
+      setKeywordSearchResults([]);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      searchKeywordsForCampaign(businessPageId, trimmed)
+        .then((results) => {
+          setKeywordSearchResults(results);
+          setAllKnownKeywords((prev) => {
+            const merged = [...prev];
+            for (const r of results) {
+              if (!merged.some((k) => k.id === r.id)) merged.push(r);
+            }
+            return merged;
+          });
+        })
+        .catch((e) => onError(e instanceof Error ? e.message : "Couldn't search keywords."));
+    }, 300);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessPageId, keywordSearchQuery]);
 
   useEffect(() => {
     if (!selectedStateId) {
@@ -436,21 +528,43 @@ function CreateCampaignForm({
           Add a keyword + city target
         </p>
         <p className="mt-1 text-xs text-ink-500">
-          You can target any city in Nigeria, not just your own. Add as many keyword/city combinations as you like —
+          You can target any city in Nigeria, not just your own. Not limited to keywords already on your page
+          either — search to find any approved keyword in your category. Add as many combinations as you like;
           each is priced individually.
         </p>
+
+        <input
+          value={keywordSearchQuery}
+          onChange={(e) => setKeywordSearchQuery(e.target.value)}
+          placeholder="Search for a keyword to target…"
+          className="mt-2 w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300"
+        />
+
         <div className="mt-2 grid gap-2 sm:grid-cols-3">
           <select
             value={pendingKeywordId ?? ""}
             onChange={(e) => setPendingKeywordId(e.target.value)}
             className="rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900"
           >
-            {keywords.length === 0 && <option value="">No keywords on your page yet</option>}
-            {keywords.map((kw) => (
-              <option key={kw.id} value={kw.id}>
-                {kw.name}
-              </option>
-            ))}
+            {allKnownKeywords.length === 0 && <option value="">Search above or add keywords to your page</option>}
+            {keywords.length > 0 && (
+              <optgroup label="On your page">
+                {keywords.map((kw) => (
+                  <option key={kw.id} value={kw.id}>
+                    {kw.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {keywordSearchResults.length > 0 && (
+              <optgroup label="Search results">
+                {keywordSearchResults.map((kw) => (
+                  <option key={kw.id} value={kw.id}>
+                    {kw.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
           <select
             value={selectedStateId ?? ""}
@@ -482,7 +596,7 @@ function CreateCampaignForm({
         <button
           type="button"
           onClick={addTarget}
-          disabled={keywords.length === 0}
+          disabled={allKnownKeywords.length === 0}
           className="mt-2 rounded-md border border-ink-100 px-3 py-1.5 text-xs font-semibold text-ink-700 hover:border-ink-300 disabled:opacity-50"
         >
           + Add target
@@ -495,7 +609,7 @@ function CreateCampaignForm({
             const priced = pricedTargets.find(
               (p) => p.keywordId === t.keywordId && p.localGovernmentId === t.localGovernmentId
             );
-            const keywordName = keywords.find((k) => k.id === t.keywordId)?.name ?? "…";
+            const keywordName = allKnownKeywords.find((k) => k.id === t.keywordId)?.name ?? "…";
             const lgaName = lgas.find((l) => l.id === t.localGovernmentId)?.name ?? "…";
             return (
               <div key={i} className="flex items-center justify-between rounded-md bg-white px-3 py-2 text-sm">
