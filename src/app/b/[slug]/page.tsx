@@ -159,7 +159,7 @@ export default async function BusinessPage({ params }: PageProps) {
       .catch((err) => console.error("Failed to record page view:", err));
   }
 
-  const [followerCount, currentUserFollow, latestVerificationRequest] = await Promise.all([
+  const [followerCount, currentUserFollow, latestVerificationRequest, hasFeaturedBadge] = await Promise.all([
     prisma.follow.count({ where: { businessPageId: business.id } }),
     user
       ? prisma.follow.findUnique({
@@ -173,6 +173,15 @@ export default async function BusinessPage({ params }: PageProps) {
           select: { cacNumber: true, status: true, reviewNotes: true, createdAt: true },
         })
       : null,
+    prisma.sponsoredListing.findFirst({
+      where: {
+        businessPageId: business.id,
+        placementType: "FEATURED_BADGE",
+        isActive: true,
+        endDate: { gte: new Date() },
+      },
+      select: { id: true },
+    }),
   ]);
 
   const [categories, states, initialLocalGovernments, initialTowns] = isOwner
@@ -240,6 +249,11 @@ export default async function BusinessPage({ params }: PageProps) {
             {business.verificationStatus === "VERIFIED" && (
               <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-600" title="Verified">
                 <BadgeCheck className="h-3.5 w-3.5 text-white" />
+              </span>
+            )}
+            {hasFeaturedBadge && (
+              <span className="flex items-center gap-1 rounded-full bg-[#F5F3FF] px-2.5 py-0.5 text-xs font-medium text-[#7C3AED]">
+                ⭐ Featured
               </span>
             )}
             {isOwner && (
