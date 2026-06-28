@@ -200,10 +200,39 @@ export async function confirmSponsoredListingPayment(reference: string) {
   const verifyData = await verifyResponse.json();
 
   if (!verifyResponse.ok || !verifyData.status || verifyData.data?.status !== "success") {
+    console.error("Paystack verify did not return success:", {
+      reference,
+      httpOk: verifyResponse.ok,
+      apiStatus: verifyData.status,
+      transactionStatus: verifyData.data?.status,
+    });
     return { success: false as const, reason: "Payment was not successful." };
   }
 
-  const metadata = verifyData.data.metadata as {
+  // Paystack's own documentation shows verify can legitimately return
+  // metadata as an empty string ("") rather than an object — this is
+  // documented, real behavior, not an edge case. A bare type assertion
+  // here (`as {...}`) would silently let metadata.priceNaira become
+  // undefined in that case, which made every payment fail the amount
+  // check below with a misleading "Amount mismatch" message even though
+  // the payment itself was genuinely successful and for the right
+  // amount — confirmed by checking the actual Paystack dashboard
+  // transaction record. Validating explicitly here instead of trusting
+  // the cast.
+  const rawMetadata = verifyData.data.metadata;
+  if (!rawMetadata || typeof rawMetadata !== "object") {
+    console.error("Paystack verify returned empty/non-object metadata:", {
+      reference,
+      metadataType: typeof rawMetadata,
+      metadataValue: rawMetadata,
+    });
+    return {
+      success: false as const,
+      reason: "Payment confirmed, but the listing details were missing. Contact support with this reference: " + reference,
+    };
+  }
+
+  const metadata = rawMetadata as {
     businessPageId: string;
     placementType: "TOP_OF_SEARCH" | "FEATURED_BADGE";
     durationDays: number;
@@ -213,6 +242,19 @@ export async function confirmSponsoredListingPayment(reference: string) {
     priceNaira: number;
   };
 
+  if (
+    !metadata.businessPageId ||
+    !metadata.placementType ||
+    !metadata.durationDays ||
+    !metadata.keywordId ||
+    typeof metadata.priceNaira !== "number"
+  ) {
+    return {
+      success: false as const,
+      reason: "Payment confirmed, but the listing details were incomplete. Contact support with this reference: " + reference,
+    };
+  }
+
   // Always re-derive the amount check from what Paystack confirms was
   // actually charged, compared against metadata.priceNaira that WE set
   // at initiation time — this catches any tampering with the amount
@@ -221,6 +263,11 @@ export async function confirmSponsoredListingPayment(reference: string) {
   // one fact that matters for fraud prevention.
   const amountPaidNaira = verifyData.data.amount / 100;
   if (amountPaidNaira !== metadata.priceNaira) {
+    console.error("Amount mismatch on sponsored listing payment:", {
+      reference,
+      amountPaidNaira,
+      expectedPriceNaira: metadata.priceNaira,
+    });
     return { success: false as const, reason: "Amount mismatch — payment not applied." };
   }
 
