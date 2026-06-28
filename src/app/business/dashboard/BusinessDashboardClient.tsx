@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import type { ComponentType } from "react";
 import Link from "next/link";
 import {
@@ -13,6 +14,7 @@ import {
   FileText,
   MessageSquare,
   Settings as SettingsIcon,
+  Rocket,
 } from "lucide-react";
 import VerificationSection from "@/components/VerificationSection";
 import PostsSection from "@/components/PostsSection";
@@ -22,6 +24,7 @@ import EditableContact from "@/components/EditableContact";
 import EditableHours from "@/components/EditableHours";
 import EditableKeywords from "@/components/EditableKeywords";
 import PhotoGallery from "@/components/PhotoGallery";
+import BoostListingPanel from "./BoostListingPanel";
 import {
   getDashboardOverview,
   getCompletenessScore,
@@ -84,20 +87,13 @@ const TABS = [
   { id: "overview", label: "Overview", icon: BarChart3 },
   { id: "posts", label: "Posts", icon: FileText },
   { id: "reviews", label: "Reviews", icon: MessageSquare },
+  { id: "boost", label: "Boost", icon: Rocket },
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
-export default function BusinessDashboardClient({
-  ownedPages,
-  activeBusinessPageId,
-  business,
-  currentUserId,
-  posts,
-  reviews,
-  averageRating,
-}: {
+type BusinessDashboardClientProps = {
   ownedPages: OwnedPage[];
   activeBusinessPageId: string;
   business: BusinessDetail;
@@ -105,8 +101,46 @@ export default function BusinessDashboardClient({
   posts: PostType[];
   reviews: ReviewType[];
   averageRating: number;
-}) {
+};
+
+// useSearchParams() (used below to read ?boost=success etc. after the
+// Paystack callback redirect) requires a Suspense boundary in the App
+// Router — same pattern already established in src/app/search/page.tsx.
+export default function BusinessDashboardClient(props: BusinessDashboardClientProps) {
+  return (
+    <Suspense fallback={null}>
+      <BusinessDashboardClientInner {...props} />
+    </Suspense>
+  );
+}
+
+function BusinessDashboardClientInner({
+  ownedPages,
+  activeBusinessPageId,
+  business,
+  currentUserId,
+  posts,
+  reviews,
+  averageRating,
+}: BusinessDashboardClientProps) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const [boostResult, setBoostResult] = useState<string | null>(null);
+
+  // Reads the ?boost= param the Paystack callback route redirects back
+  // with (see boost/callback/route.ts), shows a result banner, switches
+  // to the Boost tab so the message is in context, then strips the
+  // param from the URL so refreshing the page doesn't re-show it.
+  useEffect(() => {
+    const boost = searchParams.get("boost");
+    if (boost) {
+      setBoostResult(boost);
+      setActiveTab("boost");
+      router.replace(`/business/dashboard/${activeBusinessPageId}`, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-12">
@@ -184,6 +218,28 @@ export default function BusinessDashboardClient({
             isFollowing={false}
             isSignedIn
           />
+        )}
+
+        {activeTab === "boost" && (
+          <>
+            {boostResult === "success" && (
+              <p className="mb-4 rounded-md bg-green-50 px-3 py-2.5 text-sm text-green-600">
+                Payment confirmed — your sponsored listing is now active.
+              </p>
+            )}
+            {boostResult === "failed" && (
+              <p className="mb-4 rounded-md bg-red-50 px-3 py-2.5 text-sm text-danger">
+                Payment wasn&apos;t completed. You haven&apos;t been charged — feel free to try again.
+              </p>
+            )}
+            {(boostResult === "error" || boostResult === "missing_reference") && (
+              <p className="mb-4 rounded-md bg-[#FFFBEB] px-3 py-2.5 text-sm text-ink-700">
+                We couldn&apos;t confirm your payment right away. If you were charged, it should still go through
+                shortly — check back in a few minutes before trying again.
+              </p>
+            )}
+            <BoostListingPanel businessPageId={business.id} />
+          </>
         )}
 
         {activeTab === "settings" && (
