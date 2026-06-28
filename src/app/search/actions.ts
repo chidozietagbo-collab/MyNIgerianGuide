@@ -15,6 +15,7 @@ export type SearchResult = {
   lgaName: string;
   townName: string | null;
   keywordNames: string[];
+  isSponsored: boolean;
 };
 
 type SearchParams = {
@@ -24,10 +25,11 @@ type SearchParams = {
 };
 
 // Per brief Section 8.2: verified businesses rank above unverified, higher
-// rating ranks above lower within each tier. Sponsored listings are meant to
-// be injected separately at the top — sponsored_listings has zero rows today
-// (Milestone 6 territory), so that step is a no-op for now but the shape of
-// this function leaves room for it later without a rewrite.
+// rating ranks above lower within each tier. Sponsored listings (brief
+// 16.5/22) are pinned above all of that, but only when they actually
+// match what's being searched — a TOP_OF_SEARCH listing was purchased
+// for a specific keyword and city, so it only surfaces for searches that
+// genuinely match both, not for every search indiscriminately.
 export async function searchBusinesses({
   keyword,
   location,
@@ -75,6 +77,72 @@ export async function searchBusinesses({
     where.AND = [locationFilter];
   }
 
+  // Sponsored results: only fetched when there's an actual keyword to
+  // match against, since a TOP_OF_SEARCH listing is tied to one specific
+  // keyword (see boost purchase flow) — without a keyword search, there's
+  // no honest basis for deciding which sponsored listing, if any, is
+  // relevant to pin above the rest.
+  let sponsoredResults: SearchResult[] = [];
+  if (trimmedKeyword) {
+    const sponsoredListings = await prisma.sponsoredListing.findMany({
+      where: {
+        isActive: true,
+        endDate: { gte: new Date() },
+        placementType: "TOP_OF_SEARCH",
+        keyword: { name: { contains: trimmedKeyword, mode: "insensitive" } },
+        businessPage: {
+          isPublished: true,
+          ...(verifiedOnly ? { verificationStatus: "VERIFIED" } : {}),
+          ...(trimmedLocation
+            ? {
+                OR: [
+                  { state: { name: { contains: trimmedLocation, mode: "insensitive" } } },
+                  { localGovernment: { name: { contains: trimmedLocation, mode: "insensitive" } } },
+                  { town: { name: { contains: trimmedLocation, mode: "insensitive" } } },
+                ],
+              }
+            : {}),
+        },
+      },
+      orderBy: { priceNaira: "desc" },
+      take: 3,
+      select: {
+        businessPage: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            description: true,
+            verificationStatus: true,
+            averageRating: true,
+            category: { select: { name: true } },
+            state: { select: { name: true } },
+            localGovernment: { select: { name: true } },
+            town: { select: { name: true } },
+            businessKeywords: { select: { keyword: { select: { name: true } } }, take: 5 },
+          },
+        },
+      },
+    });
+
+    sponsoredResults = sponsoredListings.map(({ businessPage: b }) => ({
+      id: b.id,
+      name: b.name,
+      slug: b.slug,
+      description: b.description,
+      verificationStatus: b.verificationStatus,
+      averageRating: b.averageRating,
+      categoryName: b.category.name,
+      stateName: b.state.name,
+      lgaName: b.localGovernment.name,
+      townName: b.town?.name ?? null,
+      keywordNames: b.businessKeywords.map((bk) => bk.keyword.name),
+      isSponsored: true,
+    }));
+  }
+
+  const sponsoredIds = new Set(sponsoredResults.map((r) => r.id));
+
   const results = await prisma.businessPage.findMany({
     where,
     orderBy: [{ verificationStatus: "desc" }, { averageRating: "desc" }],
@@ -94,19 +162,27 @@ export async function searchBusinesses({
     },
   });
 
-  return results.map((b) => ({
-    id: b.id,
-    name: b.name,
-    slug: b.slug,
-    description: b.description,
-    verificationStatus: b.verificationStatus,
-    averageRating: b.averageRating,
-    categoryName: b.category.name,
-    stateName: b.state.name,
-    lgaName: b.localGovernment.name,
-    townName: b.town?.name ?? null,
-    keywordNames: b.businessKeywords.map((bk) => bk.keyword.name),
-  }));
+  const regularResults = results
+    // A sponsored business already appears in the pinned section above —
+    // showing it again further down would be confusing duplication, not
+    // a second, separate result.
+    .filter((b) => !sponsoredIds.has(b.id))
+    .map((b) => ({
+      id: b.id,
+      name: b.name,
+      slug: b.slug,
+      description: b.description,
+      verificationStatus: b.verificationStatus,
+      averageRating: b.averageRating,
+      categoryName: b.category.name,
+      stateName: b.state.name,
+      lgaName: b.localGovernment.name,
+      townName: b.town?.name ?? null,
+      keywordNames: b.businessKeywords.map((bk) => bk.keyword.name),
+      isSponsored: false,
+    }));
+
+  return [...sponsoredResults, ...regularResults];
 }
 
 // ---------------------------------------------------------------------------
