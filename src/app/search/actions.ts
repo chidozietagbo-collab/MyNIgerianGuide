@@ -16,6 +16,11 @@ export type SearchResult = {
   townName: string | null;
   keywordNames: string[];
   isSponsored: boolean;
+  // Only set for sponsored results — the specific AdCampaignTarget that
+  // earned this result its placement, so a click can be attributed to
+  // the right keyword+city combination in the campaign owner's
+  // performance view, not just "this business got a click somewhere."
+  sponsoredTargetId?: string;
 };
 
 type SearchParams = {
@@ -78,54 +83,68 @@ export async function searchBusinesses({
   }
 
   // Sponsored results: only fetched when there's an actual keyword to
-  // match against, since a TOP_OF_SEARCH listing is tied to one specific
-  // keyword (see boost purchase flow) — without a keyword search, there's
-  // no honest basis for deciding which sponsored listing, if any, is
-  // relevant to pin above the rest.
+  // match against, since a TOP_OF_SEARCH target is tied to one specific
+  // keyword+city pair — without a keyword search, there's no honest
+  // basis for deciding which target, if any, is relevant to pin above
+  // the rest.
+  //
+  // Queries AdCampaignTarget (the multi-target campaign model), not the
+  // superseded SponsoredListing table — new campaigns never write there.
+  // Matching is against the TARGET's own keyword+LGA, which can be any
+  // city in Nigeria (founder's explicit decision to allow targeting
+  // outside a business's own location), not the business's address like
+  // the original single-target model used.
   let sponsoredResults: SearchResult[] = [];
   if (trimmedKeyword) {
-    const sponsoredListings = await prisma.sponsoredListing.findMany({
+    const now = new Date();
+    const campaignTargets = await prisma.adCampaignTarget.findMany({
       where: {
-        isActive: true,
-        endDate: { gte: new Date() },
-        placementType: "TOP_OF_SEARCH",
         keyword: { name: { contains: trimmedKeyword, mode: "insensitive" } },
-        businessPage: {
-          isPublished: true,
-          ...(verifiedOnly ? { verificationStatus: "VERIFIED" } : {}),
-          ...(trimmedLocation
-            ? {
-                OR: [
-                  { state: { name: { contains: trimmedLocation, mode: "insensitive" } } },
-                  { localGovernment: { name: { contains: trimmedLocation, mode: "insensitive" } } },
-                  { town: { name: { contains: trimmedLocation, mode: "insensitive" } } },
-                ],
-              }
-            : {}),
+        campaign: {
+          isActive: true,
+          isPaused: false,
+          endDate: { gte: now },
+          placementType: "TOP_OF_SEARCH",
+          // A campaign with creative must be APPROVED to show; a
+          // campaign with no creative at all (NONE) never needed review
+          // and shows as soon as it's active.
+          creativeApprovalStatus: { in: ["NONE", "APPROVED"] },
+          businessPage: {
+            isPublished: true,
+            ...(verifiedOnly ? { verificationStatus: "VERIFIED" } : {}),
+          },
         },
+        ...(trimmedLocation
+          ? { localGovernment: { name: { contains: trimmedLocation, mode: "insensitive" } } }
+          : {}),
       },
       orderBy: { priceNaira: "desc" },
       take: 3,
       select: {
-        businessPage: {
+        id: true,
+        campaign: {
           select: {
-            id: true,
-            name: true,
-            slug: true,
-            description: true,
-            verificationStatus: true,
-            averageRating: true,
-            category: { select: { name: true } },
-            state: { select: { name: true } },
-            localGovernment: { select: { name: true } },
-            town: { select: { name: true } },
-            businessKeywords: { select: { keyword: { select: { name: true } } }, take: 5 },
+            businessPage: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                description: true,
+                verificationStatus: true,
+                averageRating: true,
+                category: { select: { name: true } },
+                state: { select: { name: true } },
+                localGovernment: { select: { name: true } },
+                town: { select: { name: true } },
+                businessKeywords: { select: { keyword: { select: { name: true } } }, take: 5 },
+              },
+            },
           },
         },
       },
     });
 
-    sponsoredResults = sponsoredListings.map(({ businessPage: b }) => ({
+    sponsoredResults = campaignTargets.map(({ id: targetId, campaign: { businessPage: b } }) => ({
       id: b.id,
       name: b.name,
       slug: b.slug,
@@ -138,7 +157,24 @@ export async function searchBusinesses({
       townName: b.town?.name ?? null,
       keywordNames: b.businessKeywords.map((bk) => bk.keyword.name),
       isSponsored: true,
+      sponsoredTargetId: targetId,
     }));
+
+    // Impression tracking — each target actually shown to a searcher
+    // counts as one impression, surfaced in the campaign owner's
+    // performance view. Not awaited: a searcher shouldn't wait on an
+    // analytics write to see results, same tradeoff already made for
+    // page-view tracking elsewhere in this app (after() isn't available
+    // in this Next.js version, confirmed earlier when that exact mistake
+    // broke a deployment).
+    if (campaignTargets.length > 0) {
+      prisma.adCampaignTarget
+        .updateMany({
+          where: { id: { in: campaignTargets.map((t) => t.id) } },
+          data: { impressionCount: { increment: 1 } },
+        })
+        .catch((err) => console.error("Failed to record ad impression:", err));
+    }
   }
 
   const sponsoredIds = new Set(sponsoredResults.map((r) => r.id));
@@ -218,4 +254,23 @@ export async function suggestBusinesses(query: string): Promise<BusinessSuggesti
   });
 
   return results.map((b) => ({ id: b.id, name: b.name, slug: b.slug, stateName: b.state.name }));
+}
+
+// Called from the search results page when a sponsored result is
+// clicked, so the campaign owner's performance view shows real
+// click-through numbers per target, not just impressions. Deliberately
+// not awaited by the caller (fire-and-forget) — a click shouldn't be
+// delayed by an analytics write, same tradeoff as impression tracking
+// above. No ownership check needed here: anyone clicking a publicly
+// visible sponsored result is legitimate, there's nothing to protect
+// against the way there is for the owner-only campaign actions.
+export async function recordAdClick(targetId: string) {
+  try {
+    await prisma.adCampaignTarget.update({
+      where: { id: targetId },
+      data: { clickCount: { increment: 1 } },
+    });
+  } catch (err) {
+    console.error("Failed to record ad click:", err);
+  }
 }
