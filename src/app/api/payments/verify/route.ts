@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { confirmSponsoredListingPayment } from "@/app/business/dashboard/sponsored-listing-actions";
+import { confirmCampaignPayment } from "@/app/business/dashboard/campaign-actions";
 
 // This is the webhook URL already configured in the Paystack dashboard
 // per the Deployment Guide's Step 3 (https://mynigerianguide.com/api/payments/verify,
@@ -57,13 +58,22 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await confirmSponsoredListingPayment(reference);
+    // Reference prefix tells us which flow this payment belongs to —
+    // campaign_ for the new multi-target system, sponsored_ for the
+    // legacy single-target flow (kept working here in case any
+    // old-flow transaction is still in flight; new purchases never
+    // generate a sponsored_ reference anymore).
+    if (reference.startsWith("campaign_")) {
+      await confirmCampaignPayment(reference);
+    } else if (reference.startsWith("sponsored_")) {
+      await confirmSponsoredListingPayment(reference);
+    }
   } catch (err) {
-    // Still return 200 — confirmSponsoredListingPayment already calls
-    // Paystack's own verify endpoint internally and is idempotent via
-    // the paystackReference unique constraint, so a transient failure
-    // here is safe to let Paystack retry rather than escalate as a hard
-    // webhook failure.
+    // Still return 200 — both confirm functions already call Paystack's
+    // own verify endpoint internally and are idempotent via their
+    // respective paystackReference unique constraints, so a transient
+    // failure here is safe to let Paystack retry rather than escalate as
+    // a hard webhook failure.
     console.error("Failed to process charge.success webhook:", err);
   }
 
