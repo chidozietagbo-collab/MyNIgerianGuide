@@ -120,16 +120,7 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</p>}
 
       {showCreateForm && (
-        <CreateCampaignForm
-          businessPageId={businessPageId}
-          onDone={async (successMessage) => {
-            setShowCreateForm(false);
-            setMessage(successMessage);
-            setError(null);
-            await refresh();
-          }}
-          onError={setError}
-        />
+        <CreateCampaignForm businessPageId={businessPageId} onError={setError} />
       )}
 
       {campaigns && campaigns.length === 0 && !showCreateForm && (
@@ -236,11 +227,9 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
 
 function CreateCampaignForm({
   businessPageId,
-  onDone,
   onError,
 }: {
   businessPageId: string;
-  onDone: (message: string) => void;
   onError: (message: string) => void;
 }) {
   const [name, setName] = useState("");
