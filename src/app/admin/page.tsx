@@ -11,6 +11,7 @@ import {
   Tag,
   FileSearch,
   UserCog,
+  Rocket,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
@@ -136,6 +137,13 @@ export default async function AdminDashboardPage() {
       description: "Add admins and manage their roles.",
       icon: UserCog,
       requiredPermission: "admin.manage_staff",
+    },
+    {
+      href: "/admin/ad-campaigns",
+      label: "Ad campaigns",
+      description: "Review ad creative, manage pricing, remove campaigns.",
+      icon: Rocket,
+      requiredPermission: "ad.view",
     },
   ];
 
