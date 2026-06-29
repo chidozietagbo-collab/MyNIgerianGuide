@@ -590,10 +590,14 @@ function CreateCampaignForm({
               type="button"
               onClick={async () => {
                 try {
-                  const created = await submitNewKeywordForEdit(categoryId, keywordSearchQuery.trim());
-                  setAllKnownKeywords((prev) => [...prev, created]);
-                  setPendingKeywordIds((prev) => new Set(prev).add(created.id));
-                  setPendingKeywordId(created.id);
+                  const result = await submitNewKeywordForEdit(categoryId, keywordSearchQuery.trim());
+                  if (!result.success) {
+                    onError(result.error);
+                    return;
+                  }
+                  setAllKnownKeywords((prev) => [...prev, result.keyword]);
+                  setPendingKeywordIds((prev) => new Set(prev).add(result.keyword.id));
+                  setPendingKeywordId(result.keyword.id);
                   setKeywordSearchQuery("");
                   setKeywordSearchResults([]);
                 } catch (e) {
