@@ -65,10 +65,25 @@ export async function submitNewCategory(name: string) {
     throw new Error("Category name is required.");
   }
 
+  // Same real bug as submitNewKeyword above, same fix: Category.slug
+  // is unique platform-wide, check before creating rather than letting
+  // a collision crash with an unhandled database error.
+  const slug = slugify(trimmed);
+  const existingCategory = await prisma.category.findUnique({
+    where: { slug },
+    select: { id: true, name: true, status: true },
+  });
+  if (existingCategory) {
+    if (existingCategory.status === "APPROVED") {
+      throw new Error(`"${existingCategory.name}" already exists and is approved — select it instead of adding it again.`);
+    }
+    throw new Error(`"${existingCategory.name}" has already been suggested and is awaiting admin review.`);
+  }
+
   const category = await prisma.category.create({
     data: {
       name: trimmed,
-      slug: slugify(trimmed),
+      slug,
       status: "PENDING",
       source: "USER_SUBMITTED",
       submittedByUserId: user.id,
@@ -166,10 +181,27 @@ export async function submitNewKeyword(categoryId: string, name: string) {
     throw new Error("Select a category before adding a new service.");
   }
 
+  // Keyword.slug is unique across the WHOLE platform, not scoped per
+  // category — a name that already exists under a different category
+  // would otherwise crash here with an unhandled database constraint
+  // error (the same real bug found and fixed in submitNewKeywordForEdit,
+  // the equivalent function used in the campaign form).
+  const slug = slugify(trimmed);
+  const existing = await prisma.keyword.findUnique({
+    where: { slug },
+    select: { id: true, name: true, status: true },
+  });
+  if (existing) {
+    if (existing.status === "APPROVED") {
+      throw new Error(`"${existing.name}" already exists and is approved — search for it instead of adding it again.`);
+    }
+    throw new Error(`"${existing.name}" has already been suggested and is awaiting admin review.`);
+  }
+
   const keyword = await prisma.keyword.create({
     data: {
       name: trimmed,
-      slug: slugify(trimmed),
+      slug,
       categoryId,
       status: "PENDING",
       source: "USER_SUBMITTED",
