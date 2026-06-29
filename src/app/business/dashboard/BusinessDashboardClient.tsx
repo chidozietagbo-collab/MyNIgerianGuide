@@ -238,7 +238,7 @@ function BusinessDashboardClientInner({
                 shortly — check back in a few minutes before trying again.
               </p>
             )}
-            <CampaignsPanel businessPageId={business.id} />
+            <CampaignsPanel businessPageId={business.id} categoryId={business.categoryId} />
           </>
         )}
 
