@@ -16,6 +16,8 @@ import {
   endCampaign,
   type CampaignTargetInput,
 } from "./campaign-actions";
+import EditCampaignTargetsPanel from "./EditCampaignTargetsPanel";
+import { submitNewKeywordForEdit } from "@/components/actions";
 import { DURATION_OPTIONS, type DurationDays } from "@/lib/sponsored-pricing";
 
 type Keyword = { id: string; name: string };
@@ -52,7 +54,13 @@ const CREATIVE_STATUS_LABELS: Record<string, string> = {
   REJECTED: "Ad rejected",
 };
 
-export default function CampaignsPanel({ businessPageId }: { businessPageId: string }) {
+export default function CampaignsPanel({
+  businessPageId,
+  categoryId,
+}: {
+  businessPageId: string;
+  categoryId: string;
+}) {
   const [campaigns, setCampaigns] = useState<OwnedCampaign[] | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -60,6 +68,7 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
   const [message, setMessage] = useState<string | null>(null);
   const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [confirmingEndId, setConfirmingEndId] = useState<string | null>(null);
+  const [editingTargetsId, setEditingTargetsId] = useState<string | null>(null);
 
   async function refresh() {
     try {
@@ -138,7 +147,7 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-danger">{error}</p>}
 
       {showCreateForm && (
-        <CreateCampaignForm businessPageId={businessPageId} onError={setError} />
+        <CreateCampaignForm businessPageId={businessPageId} categoryId={categoryId} onError={setError} />
       )}
 
       {campaigns && campaigns.length === 0 && !showCreateForm && (
@@ -238,6 +247,13 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
                 </button>
                 <button
                   type="button"
+                  onClick={() => setEditingTargetsId(editingTargetsId === campaign.id ? null : campaign.id)}
+                  className="flex items-center gap-1.5 rounded-md border border-ink-100 px-3 py-1.5 text-xs font-semibold text-ink-700 hover:border-ink-300"
+                >
+                  Edit targets
+                </button>
+                <button
+                  type="button"
                   onClick={() => setConfirmingEndId(confirmingEndId === campaign.id ? null : campaign.id)}
                   disabled={pendingActionId === campaign.id}
                   className="flex items-center gap-1.5 rounded-md border border-danger px-3 py-1.5 text-xs font-semibold text-danger hover:bg-red-50 disabled:opacity-50"
@@ -246,6 +262,20 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
                   End campaign
                 </button>
               </div>
+            )}
+
+            {editingTargetsId === campaign.id && (
+              <EditCampaignTargetsPanel
+                campaignId={campaign.id}
+                businessPageId={businessPageId}
+                categoryId={categoryId}
+                targets={campaign.targets}
+                onClose={() => setEditingTargetsId(null)}
+                onChanged={async (msg) => {
+                  setMessage(msg);
+                  await refresh();
+                }}
+              />
             )}
 
             {confirmingEndId === campaign.id && (
@@ -282,9 +312,11 @@ export default function CampaignsPanel({ businessPageId }: { businessPageId: str
 
 function CreateCampaignForm({
   businessPageId,
+  categoryId,
   onError,
 }: {
   businessPageId: string;
+  categoryId: string;
   onError: (message: string) => void;
 }) {
   const [name, setName] = useState("");
@@ -307,6 +339,7 @@ function CreateCampaignForm({
   // search this combined list by id) work correctly for searched
   // keywords too, not just the ones tagged on the business page.
   const [allKnownKeywords, setAllKnownKeywords] = useState<Keyword[]>([]);
+  const [pendingKeywordIds, setPendingKeywordIds] = useState<Set<string>>(new Set());
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -394,6 +427,12 @@ function CreateCampaignForm({
   function addTarget() {
     if (!pendingKeywordId || !pendingLgaId) {
       onError("Pick a keyword and a city first.");
+      return;
+    }
+    if (pendingKeywordIds.has(pendingKeywordId)) {
+      onError(
+        "This keyword is still awaiting admin approval — you can add it as a target once it's approved."
+      );
       return;
     }
     const alreadyAdded = targets.some(
@@ -540,6 +579,34 @@ function CreateCampaignForm({
           className="mt-2 w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300"
         />
 
+        {keywordSearchQuery.trim() && keywordSearchResults.length === 0 && (
+          <div className="mt-1.5 rounded-md bg-[#FFFBEB] px-3 py-2">
+            <p className="text-xs text-ink-700">
+              No matching keyword found. You can suggest &quot;{keywordSearchQuery.trim()}&quot; as a new one — it
+              needs admin approval before it can be used (same process as suggesting a new service when setting up
+              your page).
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const created = await submitNewKeywordForEdit(categoryId, keywordSearchQuery.trim());
+                  setAllKnownKeywords((prev) => [...prev, created]);
+                  setPendingKeywordIds((prev) => new Set(prev).add(created.id));
+                  setPendingKeywordId(created.id);
+                  setKeywordSearchQuery("");
+                  setKeywordSearchResults([]);
+                } catch (e) {
+                  onError(e instanceof Error ? e.message : "Couldn't submit this keyword.");
+                }
+              }}
+              className="mt-1.5 rounded-md border border-ink-100 px-2.5 py-1 text-xs font-semibold text-ink-700 hover:border-ink-300"
+            >
+              Suggest &quot;{keywordSearchQuery.trim()}&quot;
+            </button>
+          </div>
+        )}
+
         <div className="mt-2 grid gap-2 sm:grid-cols-3">
           <select
             value={pendingKeywordId ?? ""}
@@ -565,6 +632,19 @@ function CreateCampaignForm({
                 ))}
               </optgroup>
             )}
+            {(() => {
+              const shown = new Set([...keywords.map((k) => k.id), ...keywordSearchResults.map((k) => k.id)]);
+              const justSuggested = allKnownKeywords.filter((k) => !shown.has(k.id));
+              return justSuggested.length > 0 ? (
+                <optgroup label="Pending approval">
+                  {justSuggested.map((kw) => (
+                    <option key={kw.id} value={kw.id}>
+                      {kw.name} (pending)
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null;
+            })()}
           </select>
           <select
             value={selectedStateId ?? ""}
