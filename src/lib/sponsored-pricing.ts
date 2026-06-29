@@ -72,7 +72,7 @@ export type PricingResult = {
 async function getAdminOverridePriceNaira(
   keywordId: string,
   localGovernmentId: string,
-  durationDays: DurationDays
+  durationDays: number
 ): Promise<number | null> {
   const exact = await prisma.$queryRaw<{ fixedPriceNairaPer30Days: number }[]>`
     SELECT "fixedPriceNairaPer30Days" FROM ad_price_overrides
@@ -98,16 +98,21 @@ async function getAdminOverridePriceNaira(
   return null;
 }
 
-function scaleToDays(priceFor30Days: number, durationDays: DurationDays): number {
+// durationDays is a plain number here (not the strict DurationDays union)
+// since this is also used to price a target added mid-campaign, for
+// however many days are actually LEFT in that campaign — an arbitrary
+// integer, not one of the three fixed purchase-time options.
+function scaleToDays(priceFor30Days: number, durationDays: number): number {
   return Math.round((priceFor30Days / 30) * durationDays);
 }
 
-export async function calculateSponsoredListingPrice(input: PricingInput): Promise<PricingResult> {
-  const overridePrice = await getAdminOverridePriceNaira(
-    input.keywordId,
-    input.localGovernmentId,
-    input.durationDays
-  );
+// Core formula shared by both the fixed-duration purchase flow and the
+// arbitrary-days mid-campaign addition flow below.
+async function calculatePriceForDays(
+  input: { placementType: "TOP_OF_SEARCH" | "FEATURED_BADGE"; keywordId: string; localGovernmentId: string },
+  durationDays: number
+): Promise<PricingResult> {
+  const overridePrice = await getAdminOverridePriceNaira(input.keywordId, input.localGovernmentId, durationDays);
 
   // Competitor count is still computed and returned even when an
   // override applies, since the UI shows "N other businesses boosting
@@ -124,23 +129,35 @@ export async function calculateSponsoredListingPrice(input: PricingInput): Promi
   });
 
   if (overridePrice !== null) {
-    return {
-      priceNaira: overridePrice,
-      competitorCount,
-      competitivenessMultiplier: 1,
-      isAdminOverride: true,
-    };
+    return { priceNaira: overridePrice, competitorCount, competitivenessMultiplier: 1, isAdminOverride: true };
   }
 
-  const competitivenessMultiplier = Math.min(
-    1 + competitorCount * COMPETITIVENESS_STEP,
-    MAX_MULTIPLIER
-  );
-
-  const basePrice = BASE_PRICE_NAIRA[input.durationDays];
+  const competitivenessMultiplier = Math.min(1 + competitorCount * COMPETITIVENESS_STEP, MAX_MULTIPLIER);
+  // BASE_PRICE_NAIRA is anchored at 7/14/30; for an arbitrary day count
+  // (mid-campaign additions), scale from the 30-day base rather than
+  // requiring an exact match in that lookup table.
+  const basePriceFor30Days = BASE_PRICE_NAIRA[30];
+  const basePrice = scaleToDays(basePriceFor30Days, durationDays);
   const placementMultiplier = PLACEMENT_MULTIPLIER[input.placementType];
 
   const priceNaira = Math.round(basePrice * placementMultiplier * competitivenessMultiplier);
 
   return { priceNaira, competitorCount, competitivenessMultiplier, isAdminOverride: false };
+}
+
+export async function calculateSponsoredListingPrice(input: PricingInput): Promise<PricingResult> {
+  return calculatePriceForDays(input, input.durationDays);
+}
+
+// Prices a target for an arbitrary number of days — used when adding a
+// new keyword+city target to an ACTIVE campaign mid-flight. Priced for
+// the campaign's REMAINING days, not a fresh full duration, since
+// adding reach to an already-running campaign isn't the same purchase
+// as starting a brand new 30-day one (founder's explicit decision: this
+// should cost something proportional, not the full original price).
+export async function calculateAddedTargetPrice(
+  input: { placementType: "TOP_OF_SEARCH" | "FEATURED_BADGE"; keywordId: string; localGovernmentId: string },
+  remainingDays: number
+): Promise<PricingResult> {
+  return calculatePriceForDays(input, Math.max(1, remainingDays));
 }
