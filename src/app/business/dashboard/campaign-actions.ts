@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
-import { calculateSponsoredListingPrice, calculateAddedTargetPrice, DURATION_OPTIONS, type DurationDays } from "@/lib/sponsored-pricing";
+import { calculateSponsoredListingPrice, DURATION_OPTIONS, type DurationDays } from "@/lib/sponsored-pricing";
 import { createNotification } from "@/components/create-notification";
 
 const PAYSTACK_BASE_URL = "https://api.paystack.co";
@@ -50,21 +50,53 @@ export async function getBusinessKeywordsForCampaign(businessPageId: string) {
 // same scoping reasoning as searchKeywordsForEdit in
 // src/components/actions.ts, which already does the equivalent search
 // during page setup.
-export async function searchKeywordsForCampaign(businessPageId: string, query: string) {
+export type KeywordSearchResult = {
+  matches: { id: string; name: string }[];
+  // Names only, not full keyword objects — these can't be selected as
+  // a target (wrong category), they're shown purely to explain why the
+  // search came up empty rather than implying "suggest it as new" is a
+  // real option, which it isn't when the name already exists elsewhere.
+  offCategoryMatchNames: string[];
+};
+
+export async function searchKeywordsForCampaign(
+  businessPageId: string,
+  query: string
+): Promise<KeywordSearchResult> {
   const { business } = await requireOwnership(businessPageId);
   const trimmed = query.trim();
-  if (!trimmed) return [];
+  if (!trimmed) return { matches: [], offCategoryMatchNames: [] };
 
-  return prisma.keyword.findMany({
-    where: {
-      status: "APPROVED",
-      categoryId: business.categoryId,
-      name: { contains: trimmed, mode: "insensitive" },
-    },
-    orderBy: { usageCount: "desc" },
-    take: 10,
-    select: { id: true, name: true },
-  });
+  const [matches, offCategoryMatches] = await Promise.all([
+    prisma.keyword.findMany({
+      where: {
+        status: "APPROVED",
+        categoryId: business.categoryId,
+        name: { contains: trimmed, mode: "insensitive" },
+      },
+      orderBy: { usageCount: "desc" },
+      take: 10,
+      select: { id: true, name: true },
+    }),
+    // Per the founder's explicit decision: keep targeting scoped to the
+    // business's own category (so a school can't accidentally end up
+    // targeting "Car Rental"), but be upfront when a search term exists
+    // under a different category instead of silently finding nothing.
+    prisma.keyword.findMany({
+      where: {
+        status: "APPROVED",
+        categoryId: { not: business.categoryId },
+        name: { contains: trimmed, mode: "insensitive" },
+      },
+      take: 5,
+      select: { name: true, category: { select: { name: true } } },
+    }),
+  ]);
+
+  return {
+    matches,
+    offCategoryMatchNames: offCategoryMatches.map((k) => `${k.name} (${k.category.name})`),
+  };
 }
 
 // Targeting is Nigeria-wide per the founder's explicit decision (a
@@ -106,13 +138,6 @@ export async function getCampaignTargetsPricing(
   }
   if (!DURATION_OPTIONS.includes(durationDays)) {
     throw new Error("Invalid duration.");
-  }
-
-  const approvedCount = await prisma.keyword.count({
-    where: { id: { in: targets.map((t) => t.keywordId) }, status: "APPROVED" },
-  });
-  if (approvedCount !== new Set(targets.map((t) => t.keywordId)).size) {
-    throw new Error("One or more selected keywords are still awaiting admin approval.");
   }
 
   const priced = await Promise.all(
@@ -477,205 +502,4 @@ export async function confirmCampaignPayment(reference: string) {
     }
     throw err;
   }
-}
-
-// Removing a target from an active campaign is free and immediate — no
-// refund for the unused portion, same policy as ending a campaign early
-// (endCampaign above), since no refund mechanism was specified and
-// Paystack refunds aren't trivial to automate. The UI calling this
-// should make that plain before letting someone confirm.
-export async function removeTargetFromCampaign(campaignId: string, targetId: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in.");
-
-  const target = await prisma.adCampaignTarget.findUnique({
-    where: { id: targetId },
-    select: {
-      campaignId: true,
-      campaign: { select: { businessPage: { select: { ownerUserId: true } } } },
-    },
-  });
-  if (!target || target.campaignId !== campaignId || target.campaign.businessPage.ownerUserId !== user.id) {
-    throw new Error("You don't own this campaign.");
-  }
-
-  const remainingTargets = await prisma.adCampaignTarget.count({ where: { campaignId } });
-  if (remainingTargets <= 1) {
-    throw new Error("A campaign needs at least one target — end the campaign instead if you want to stop entirely.");
-  }
-
-  await prisma.adCampaignTarget.delete({ where: { id: targetId } });
-}
-
-// Prices adding a NEW keyword+city target to an ACTIVE campaign, for
-// whatever time is actually LEFT in that campaign — not a fresh full
-// duration. Per the founder's explicit decision: adding reach to an
-// already-running campaign is a real, smaller purchase, not free and
-// not the same price as starting over.
-export async function getAddedTargetPrice(
-  campaignId: string,
-  keywordId: string,
-  localGovernmentId: string
-) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in.");
-
-  const campaign = await prisma.adCampaign.findUnique({
-    where: { id: campaignId },
-    select: {
-      placementType: true,
-      endDate: true,
-      businessPage: { select: { ownerUserId: true } },
-    },
-  });
-  if (!campaign || campaign.businessPage.ownerUserId !== user.id) {
-    throw new Error("You don't own this campaign.");
-  }
-
-  const remainingDays = Math.ceil((campaign.endDate.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
-  if (remainingDays <= 0) {
-    throw new Error("This campaign has already ended.");
-  }
-
-  const keyword = await prisma.keyword.findUnique({ where: { id: keywordId }, select: { status: true } });
-  if (!keyword || keyword.status !== "APPROVED") {
-    throw new Error("This keyword is still awaiting admin approval.");
-  }
-
-  const result = await calculateAddedTargetPrice(
-    { placementType: campaign.placementType, keywordId, localGovernmentId },
-    remainingDays
-  );
-  return { ...result, remainingDays };
-}
-
-// Initiates a SEPARATE Paystack payment for adding one target to an
-// existing active campaign. Mirrors initiateCampaignPurchase's pattern
-// (price now, write nothing until payment confirms) but the metadata
-// carries an existing campaignId instead of full new-campaign details,
-// and confirmation (confirmAddedTargetPayment below) attaches the
-// target to that campaign rather than creating a new AdCampaign row.
-export async function initiateAddTargetPurchase(
-  campaignId: string,
-  keywordId: string,
-  localGovernmentId: string
-) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in.");
-
-  const campaign = await prisma.adCampaign.findUnique({
-    where: { id: campaignId },
-    select: {
-      businessPageId: true,
-      businessPage: { select: { ownerUserId: true } },
-    },
-  });
-  if (!campaign || campaign.businessPage.ownerUserId !== user.id) {
-    throw new Error("You don't own this campaign.");
-  }
-
-  const { priceNaira } = await getAddedTargetPrice(campaignId, keywordId, localGovernmentId);
-
-  const secretKey = process.env.PAYSTACK_SECRET_KEY;
-  if (!secretKey) {
-    throw new Error("Payments aren't configured yet. Set PAYSTACK_SECRET_KEY in your environment variables.");
-  }
-
-  const reference = `addtarget_${campaignId}_${Date.now()}`;
-
-  const response = await fetch(`${PAYSTACK_BASE_URL}/transaction/initialize`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${secretKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email: user.email,
-      amount: priceNaira * 100,
-      reference,
-      callback_url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://my-n-igerian-guide.vercel.app"}/business/dashboard/${campaign.businessPageId}/campaigns/callback`,
-      metadata: { campaignId, keywordId, localGovernmentId, priceNaira },
-    }),
-  });
-
-  const data = await response.json();
-  if (!response.ok || !data.status) {
-    throw new Error(data.message ?? "Couldn't start the payment. Please try again.");
-  }
-
-  return { authorizationUrl: data.data.authorization_url as string, reference: data.data.reference as string };
-}
-
-// Shared confirmation path for the add-target-to-active-campaign flow.
-// Same reference-prefix routing approach as the webhook route uses to
-// distinguish full campaign purchases (campaign_) from this addition
-// flow (addtarget_) — called from the same callback route either way.
-export async function confirmAddedTargetPayment(reference: string) {
-  const secretKey = process.env.PAYSTACK_SECRET_KEY;
-  if (!secretKey) {
-    throw new Error("Payments aren't configured.");
-  }
-
-  const verifyResponse = await fetch(`${PAYSTACK_BASE_URL}/transaction/verify/${reference}`, {
-    headers: { Authorization: `Bearer ${secretKey}` },
-  });
-  const verifyData = await verifyResponse.json();
-
-  if (!verifyResponse.ok || !verifyData.status || verifyData.data?.status !== "success") {
-    console.error("Paystack verify did not return success (add target):", {
-      reference,
-      httpOk: verifyResponse.ok,
-      apiStatus: verifyData.status,
-      transactionStatus: verifyData.data?.status,
-    });
-    return { success: false as const, reason: "Payment was not successful." };
-  }
-
-  const rawMetadata = verifyData.data.metadata;
-  if (!rawMetadata || typeof rawMetadata !== "object") {
-    return { success: false as const, reason: "Payment confirmed, but the target details were missing." };
-  }
-
-  const rawMeta = rawMetadata as Record<string, unknown>;
-  const campaignId = String(rawMeta.campaignId ?? "");
-  const keywordId = String(rawMeta.keywordId ?? "");
-  const localGovernmentId = String(rawMeta.localGovernmentId ?? "");
-  const priceNaira = Number(rawMeta.priceNaira);
-
-  if (!campaignId || !keywordId || !localGovernmentId || Number.isNaN(priceNaira)) {
-    return { success: false as const, reason: "Payment confirmed, but the target details were incomplete." };
-  }
-
-  const amountPaidNaira = verifyData.data.amount / 100;
-  if (amountPaidNaira !== priceNaira) {
-    console.error("Amount mismatch on add-target payment:", { reference, amountPaidNaira, priceNaira });
-    return { success: false as const, reason: "Amount mismatch — payment not applied." };
-  }
-
-  // Idempotency: skip if this exact reference's target combination
-  // already exists on this campaign — a webhook retry or revisited
-  // callback URL shouldn't add the same paid-for target twice. There's
-  // no unique constraint to lean on here (unlike AdCampaign's
-  // paystackReference), so this checks for the specific combination
-  // instead.
-  const alreadyAdded = await prisma.adCampaignTarget.findFirst({
-    where: { campaignId, keywordId, localGovernmentId },
-  });
-  if (alreadyAdded) {
-    return { success: true as const, alreadyProcessed: true };
-  }
-
-  await prisma.adCampaignTarget.create({
-    data: { campaignId, keywordId, localGovernmentId, priceNaira },
-  });
-
-  await prisma.adCampaign.update({
-    where: { id: campaignId },
-    data: { totalPriceNaira: { increment: priceNaira } },
-  });
-
-  return { success: true as const, alreadyProcessed: false };
 }
