@@ -216,11 +216,15 @@ function AddTargetForm({
     if (!trimmed) return;
     setIsSubmittingNewKeyword(true);
     try {
-      const created = await submitNewKeywordForEdit(categoryId, trimmed);
-      setSelectedKeywordId(created.id);
-      setSelectedKeywordName(created.name);
-      setJustSuggestedKeywordId(created.id);
-      setQuery(created.name);
+      const result = await submitNewKeywordForEdit(categoryId, trimmed);
+      if (!result.success) {
+        onError(result.error);
+        return;
+      }
+      setSelectedKeywordId(result.keyword.id);
+      setSelectedKeywordName(result.keyword.name);
+      setJustSuggestedKeywordId(result.keyword.id);
+      setQuery(result.keyword.name);
       setResults([]);
     } catch (e) {
       onError(e instanceof Error ? e.message : "Couldn't submit this keyword.");
