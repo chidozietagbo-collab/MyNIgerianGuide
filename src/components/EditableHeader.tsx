@@ -59,10 +59,15 @@ export default function EditableHeader({
   async function handleAddCategory() {
     if (!newCategoryName.trim()) return;
     setAddingCategory(true);
+    setError(null);
     try {
-      const category = await submitNewCategoryForEdit(newCategoryName.trim());
-      setCategories((prev) => [...prev, category]);
-      setCategoryId(category.id);
+      const result = await submitNewCategoryForEdit(newCategoryName.trim());
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setCategories((prev) => [...prev, result.category]);
+      setCategoryId(result.category.id);
       setNewCategoryName("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't add that category.");
