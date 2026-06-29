@@ -37,6 +37,8 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   BUSINESS_PAGE: "Business page",
   POST: "Post",
   REVIEW: "Review",
+  AD_CAMPAIGN: "Ad campaign",
+  AD_PRICE_OVERRIDE: "Ad price override",
 };
 
 type AuditLogClientProps = {
