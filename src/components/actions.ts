@@ -261,16 +261,28 @@ export async function searchKeywordsForEdit(query: string, categoryId: string) {
   });
 }
 
-export async function submitNewKeywordForEdit(categoryId: string, name: string) {
+// Returns a result object rather than throwing, because Next.js
+// redacts thrown Server Action errors to a generic, unhelpful message
+// in production builds (confirmed: this is documented, intentional
+// behavior — Next.js can't tell an intentional user-facing error apart
+// from one that might leak something sensitive, so it strips the
+// message either way). Returning { success, error } instead of
+// throwing is the standard, documented workaround, and is what
+// actually lets a real message like "already exists and is approved"
+// reach the person using the form instead of a blank digest.
+export async function submitNewKeywordForEdit(
+  categoryId: string,
+  name: string
+): Promise<{ success: true; keyword: { id: string; name: string } } | { success: false; error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    throw new Error("Not signed in.");
+    return { success: false, error: "Not signed in." };
   }
 
   const trimmed = name.trim();
   if (!trimmed) {
-    throw new Error("Service name is required.");
+    return { success: false, error: "Service name is required." };
   }
 
   const base = trimmed
@@ -280,26 +292,24 @@ export async function submitNewKeywordForEdit(categoryId: string, name: string) 
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 
-  // Keyword.slug is unique across the WHOLE platform, not scoped per
-  // category (confirmed in schema) — so a name that already exists
-  // under a different category than the one being searched would
-  // otherwise crash here with an unhandled database constraint error
-  // (real production bug: hit when a category-scoped search correctly
-  // found no match, but the name already existed approved under an
-  // unrelated category). Checking first lets this respond helpfully
-  // instead of crashing.
   const existing = await prisma.keyword.findUnique({
     where: { slug: base },
     select: { id: true, name: true, status: true },
   });
   if (existing) {
     if (existing.status === "APPROVED") {
-      throw new Error(`"${existing.name}" already exists and is approved — you can search for it directly.`);
+      return {
+        success: false,
+        error: `"${existing.name}" already exists and is approved — you can search for it directly.`,
+      };
     }
-    throw new Error(`"${existing.name}" has already been suggested and is awaiting admin review.`);
+    return {
+      success: false,
+      error: `"${existing.name}" has already been suggested and is awaiting admin review.`,
+    };
   }
 
-  return prisma.keyword.create({
+  const keyword = await prisma.keyword.create({
     data: {
       name: trimmed,
       slug: base,
@@ -310,21 +320,28 @@ export async function submitNewKeywordForEdit(categoryId: string, name: string) 
     },
     select: { id: true, name: true },
   });
+
+  return { success: true, keyword };
 }
 
 // ===========================================================================
 // CATEGORY SUBMISSION (edit flow — same pattern as the wizard's submitNewCategory)
 // ===========================================================================
-export async function submitNewCategoryForEdit(name: string) {
+// Returns a result object rather than throwing — same reasoning as
+// submitNewKeywordForEdit above (thrown Server Action errors are
+// redacted to a generic message in production builds).
+export async function submitNewCategoryForEdit(
+  name: string
+): Promise<{ success: true; category: { id: string; name: string } } | { success: false; error: string }> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
-    throw new Error("Not signed in.");
+    return { success: false, error: "Not signed in." };
   }
 
   const trimmed = name.trim();
   if (!trimmed) {
-    throw new Error("Category name is required.");
+    return { success: false, error: "Category name is required." };
   }
 
   const base = trimmed
@@ -334,22 +351,24 @@ export async function submitNewCategoryForEdit(name: string) {
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 
-  // Same real bug as submitNewKeywordForEdit above, same fix:
-  // Category.slug is unique platform-wide, so check before creating
-  // rather than letting a collision crash with an unhandled database
-  // error.
   const existingCategory = await prisma.category.findUnique({
     where: { slug: base },
     select: { id: true, name: true, status: true },
   });
   if (existingCategory) {
     if (existingCategory.status === "APPROVED") {
-      throw new Error(`"${existingCategory.name}" already exists and is approved — you can select it directly.`);
+      return {
+        success: false,
+        error: `"${existingCategory.name}" already exists and is approved — you can select it directly.`,
+      };
     }
-    throw new Error(`"${existingCategory.name}" has already been suggested and is awaiting admin review.`);
+    return {
+      success: false,
+      error: `"${existingCategory.name}" has already been suggested and is awaiting admin review.`,
+    };
   }
 
-  return prisma.category.create({
+  const category = await prisma.category.create({
     data: {
       name: trimmed,
       slug: base,
@@ -359,6 +378,8 @@ export async function submitNewCategoryForEdit(name: string) {
     },
     select: { id: true, name: true },
   });
+
+  return { success: true, category };
 }
 
 // ===========================================================================
