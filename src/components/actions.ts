@@ -280,6 +280,25 @@ export async function submitNewKeywordForEdit(categoryId: string, name: string) 
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 
+  // Keyword.slug is unique across the WHOLE platform, not scoped per
+  // category (confirmed in schema) — so a name that already exists
+  // under a different category than the one being searched would
+  // otherwise crash here with an unhandled database constraint error
+  // (real production bug: hit when a category-scoped search correctly
+  // found no match, but the name already existed approved under an
+  // unrelated category). Checking first lets this respond helpfully
+  // instead of crashing.
+  const existing = await prisma.keyword.findUnique({
+    where: { slug: base },
+    select: { id: true, name: true, status: true },
+  });
+  if (existing) {
+    if (existing.status === "APPROVED") {
+      throw new Error(`"${existing.name}" already exists and is approved — you can search for it directly.`);
+    }
+    throw new Error(`"${existing.name}" has already been suggested and is awaiting admin review.`);
+  }
+
   return prisma.keyword.create({
     data: {
       name: trimmed,
@@ -314,6 +333,21 @@ export async function submitNewCategoryForEdit(name: string) {
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
+
+  // Same real bug as submitNewKeywordForEdit above, same fix:
+  // Category.slug is unique platform-wide, so check before creating
+  // rather than letting a collision crash with an unhandled database
+  // error.
+  const existingCategory = await prisma.category.findUnique({
+    where: { slug: base },
+    select: { id: true, name: true, status: true },
+  });
+  if (existingCategory) {
+    if (existingCategory.status === "APPROVED") {
+      throw new Error(`"${existingCategory.name}" already exists and is approved — you can select it directly.`);
+    }
+    throw new Error(`"${existingCategory.name}" has already been suggested and is awaiting admin review.`);
+  }
 
   return prisma.category.create({
     data: {
