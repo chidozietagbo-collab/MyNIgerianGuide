@@ -37,7 +37,11 @@ export default function HeroSearch() {
 
   function handleSuggestionClick(suggestion: BusinessSuggestion) {
     setShowSuggestions(false);
-    router.push(`/b/${suggestion.slug}`);
+    if (suggestion.kind === "business") {
+      router.push(`/b/${suggestion.slug}`);
+    } else {
+      goToSearch(suggestion.name);
+    }
   }
 
   return (
@@ -73,7 +77,7 @@ export default function HeroSearch() {
       {showSuggestions && (
         <ul className="absolute left-0 top-full z-10 mt-1 w-full rounded-md border border-ink-100 bg-white shadow-lg">
           {suggestions.map((s) => (
-            <li key={s.id}>
+            <li key={`${s.kind}-${s.id}`}>
               <button
                 type="button"
                 // onMouseDown (not onClick) fires BEFORE the input's onBlur,
@@ -86,8 +90,18 @@ export default function HeroSearch() {
                 }}
                 className="block w-full px-4 py-2 text-left text-sm text-ink-700 hover:bg-green-50"
               >
-                <span className="font-medium">{s.name}</span>
-                <span className="ml-1.5 text-ink-300">— {s.stateName}</span>
+                {s.kind === "business" ? (
+                  <>
+                    <span className="font-medium">{s.name}</span>
+                    <span className="ml-1.5 text-ink-300">— {s.stateName}</span>
+                  </>
+                ) : (
+                  <>
+                    <Search className="mr-1.5 inline h-3 w-3 text-ink-300" />
+                    <span className="font-medium">{s.name}</span>
+                    <span className="ml-1.5 text-ink-300">— search this service</span>
+                  </>
+                )}
               </button>
             </li>
           ))}
