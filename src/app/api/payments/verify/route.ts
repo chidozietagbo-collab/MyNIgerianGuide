@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { confirmSponsoredListingPayment } from "@/app/business/dashboard/sponsored-listing-actions";
-import { confirmCampaignPayment } from "@/app/business/dashboard/campaign-actions";
+import { confirmCampaignPayment, confirmAddedTargetPayment } from "@/app/business/dashboard/campaign-actions";
 
 // This is the webhook URL already configured in the Paystack dashboard
 // per the Deployment Guide's Step 3 (https://mynigerianguide.com/api/payments/verify,
@@ -59,12 +59,15 @@ export async function POST(request: NextRequest) {
 
   try {
     // Reference prefix tells us which flow this payment belongs to —
-    // campaign_ for the new multi-target system, sponsored_ for the
-    // legacy single-target flow (kept working here in case any
-    // old-flow transaction is still in flight; new purchases never
-    // generate a sponsored_ reference anymore).
+    // campaign_ for a full new campaign, addtarget_ for adding one
+    // target to an existing active campaign, sponsored_ for the legacy
+    // single-target flow (kept working here in case any old-flow
+    // transaction is still in flight; new purchases never generate a
+    // sponsored_ reference anymore).
     if (reference.startsWith("campaign_")) {
       await confirmCampaignPayment(reference);
+    } else if (reference.startsWith("addtarget_")) {
+      await confirmAddedTargetPayment(reference);
     } else if (reference.startsWith("sponsored_")) {
       await confirmSponsoredListingPayment(reference);
     }
