@@ -223,37 +223,68 @@ export async function searchBusinesses({
 
 // ---------------------------------------------------------------------------
 // Quick suggestions for "as you type" dropdowns (homepage hero + search
-// page). Deliberately small and fast: business name match only, top 5,
-// just enough to show "here's a real business matching what you typed"
-// before the person even hits Search.
+// page). Originally business-name-match only; extended per founder
+// feedback to also suggest matching KEYWORDS, since the search box's own
+// placeholder text ("plumbers, hotels…") already implied keyword search
+// was supported, but the suggestion dropdown never actually surfaced
+// keyword matches — only business names. A discriminated "kind" field
+// lets the UI tell the two apart: clicking a business suggestion goes
+// straight to that business's page; clicking a keyword suggestion runs
+// a search for that keyword instead, since there's no single business
+// to jump to.
 // ---------------------------------------------------------------------------
-export type BusinessSuggestion = {
-  id: string;
-  name: string;
-  slug: string;
-  stateName: string;
-};
+export type BusinessSuggestion =
+  | { kind: "business"; id: string; name: string; slug: string; stateName: string }
+  | { kind: "keyword"; id: string; name: string };
 
 export async function suggestBusinesses(query: string): Promise<BusinessSuggestion[]> {
   const trimmed = query.trim();
   if (trimmed.length < 2) return [];
 
-  const results = await prisma.businessPage.findMany({
-    where: {
-      isPublished: true,
-      name: { contains: trimmed, mode: "insensitive" },
-    },
-    orderBy: [{ verificationStatus: "desc" }, { averageRating: "desc" }],
-    take: 5,
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      state: { select: { name: true } },
-    },
-  });
+  const [businesses, keywords] = await Promise.all([
+    prisma.businessPage.findMany({
+      where: {
+        isPublished: true,
+        name: { contains: trimmed, mode: "insensitive" },
+      },
+      orderBy: [{ verificationStatus: "desc" }, { averageRating: "desc" }],
+      take: 5,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        state: { select: { name: true } },
+      },
+    }),
+    prisma.keyword.findMany({
+      where: {
+        status: "APPROVED",
+        name: { contains: trimmed, mode: "insensitive" },
+      },
+      orderBy: { usageCount: "desc" },
+      take: 5,
+      select: { id: true, name: true },
+    }),
+  ]);
 
-  return results.map((b) => ({ id: b.id, name: b.name, slug: b.slug, stateName: b.state.name }));
+  const businessSuggestions: BusinessSuggestion[] = businesses.map((b) => ({
+    kind: "business",
+    id: b.id,
+    name: b.name,
+    slug: b.slug,
+    stateName: b.state.name,
+  }));
+  const keywordSuggestions: BusinessSuggestion[] = keywords.map((k) => ({
+    kind: "keyword",
+    id: k.id,
+    name: k.name,
+  }));
+
+  // Keywords first: someone typing "plumb…" is almost always looking
+  // for the SERVICE, not a business literally named "Plumb". Business
+  // name matches still show below, capped so the combined list doesn't
+  // overwhelm a small dropdown.
+  return [...keywordSuggestions, ...businessSuggestions].slice(0, 8);
 }
 
 // Called from the search results page when a sponsored result is
