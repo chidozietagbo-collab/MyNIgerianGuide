@@ -334,6 +334,7 @@ function CreateCampaignForm({
   const [targets, setTargets] = useState<CampaignTargetInput[]>([]);
   const [keywordSearchQuery, setKeywordSearchQuery] = useState("");
   const [keywordSearchResults, setKeywordSearchResults] = useState<Keyword[]>([]);
+  const [offCategoryMatchNames, setOffCategoryMatchNames] = useState<string[]>([]);
   // All keywords this form has ever known about — tagged ones plus
   // anything found via search — so price/target display lookups (which
   // search this combined list by id) work correctly for searched
@@ -373,15 +374,17 @@ function CreateCampaignForm({
     const trimmed = keywordSearchQuery.trim();
     if (!trimmed) {
       setKeywordSearchResults([]);
+      setOffCategoryMatchNames([]);
       return;
     }
     const timeout = setTimeout(() => {
       searchKeywordsForCampaign(businessPageId, trimmed)
-        .then((results) => {
-          setKeywordSearchResults(results);
+        .then((result) => {
+          setKeywordSearchResults(result.matches);
+          setOffCategoryMatchNames(result.offCategoryMatchNames);
           setAllKnownKeywords((prev) => {
             const merged = [...prev];
-            for (const r of results) {
+            for (const r of result.matches) {
               if (!merged.some((k) => k.id === r.id)) merged.push(r);
             }
             return merged;
@@ -579,7 +582,16 @@ function CreateCampaignForm({
           className="mt-2 w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 placeholder:text-ink-300"
         />
 
-        {keywordSearchQuery.trim() && keywordSearchResults.length === 0 && (
+        {keywordSearchQuery.trim() && keywordSearchResults.length === 0 && offCategoryMatchNames.length > 0 && (
+          <div className="mt-1.5 rounded-md bg-[#FFFBEB] px-3 py-2">
+            <p className="text-xs text-ink-700">
+              {offCategoryMatchNames.join(", ")} exists, but under a different category than your business. You
+              can only target keywords within your own business&apos;s category.
+            </p>
+          </div>
+        )}
+
+        {keywordSearchQuery.trim() && keywordSearchResults.length === 0 && offCategoryMatchNames.length === 0 && (
           <div className="mt-1.5 rounded-md bg-[#FFFBEB] px-3 py-2">
             <p className="text-xs text-ink-700">
               No matching keyword found. You can suggest &quot;{keywordSearchQuery.trim()}&quot; as a new one — it
