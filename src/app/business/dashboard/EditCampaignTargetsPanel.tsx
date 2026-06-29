@@ -146,6 +146,7 @@ function AddTargetForm({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Keyword[]>([]);
+  const [offCategoryMatchNames, setOffCategoryMatchNames] = useState<string[]>([]);
   const [selectedKeywordId, setSelectedKeywordId] = useState<string | null>(null);
   const [selectedKeywordName, setSelectedKeywordName] = useState<string>("");
   const [isSearching, setIsSearching] = useState(false);
@@ -171,12 +172,16 @@ function AddTargetForm({
     const trimmed = query.trim();
     if (!trimmed) {
       setResults([]);
+      setOffCategoryMatchNames([]);
       return;
     }
     setIsSearching(true);
     const timeout = setTimeout(() => {
       searchKeywordsForCampaign(businessPageId, trimmed)
-        .then(setResults)
+        .then((result) => {
+          setResults(result.matches);
+          setOffCategoryMatchNames(result.offCategoryMatchNames);
+        })
         .catch((e) => onError(e instanceof Error ? e.message : "Couldn't search keywords."))
         .finally(() => setIsSearching(false));
     }, 300);
@@ -262,7 +267,20 @@ function AddTargetForm({
 
       {isSearching && <p className="mt-1.5 text-xs text-ink-300">Searching…</p>}
 
-      {!isSearching && query.trim() && results.length === 0 && !selectedKeywordId && (
+      {!isSearching && query.trim() && results.length === 0 && !selectedKeywordId && offCategoryMatchNames.length > 0 && (
+        <div className="mt-1.5 rounded-md bg-[#FFFBEB] px-3 py-2">
+          <p className="text-xs text-ink-700">
+            {offCategoryMatchNames.join(", ")} exists, but under a different category than your business. You can
+            only target keywords within your own business&apos;s category.
+          </p>
+        </div>
+      )}
+
+      {!isSearching &&
+        query.trim() &&
+        results.length === 0 &&
+        !selectedKeywordId &&
+        offCategoryMatchNames.length === 0 && (
         <div className="mt-1.5 rounded-md bg-[#FFFBEB] px-3 py-2">
           <p className="text-xs text-ink-700">
             No matching keyword found. You can suggest &quot;{query.trim()}&quot; as a new one — it&apos;ll need
