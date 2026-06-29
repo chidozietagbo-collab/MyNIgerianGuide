@@ -45,9 +45,14 @@ export default function EditableKeywords({ businessPageId, categoryId, currentKe
   async function handleAddNewKeyword() {
     if (!query.trim()) return;
     setAddingKeyword(true);
+    setError(null);
     try {
-      const kw = await submitNewKeywordForEdit(categoryId, query.trim());
-      addKeyword(kw);
+      const result = await submitNewKeywordForEdit(categoryId, query.trim());
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      addKeyword(result.keyword);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't add that service.");
     } finally {
