@@ -56,18 +56,25 @@ export async function getTopKeywordLocationSignals(limit = 50): Promise<KeywordP
     GROUP BY act."keywordId", act."localGovernmentId"
   `;
 
-  const combinationKeys = new Map<string, { keywordId: string; lgaId: string }>();
+  // Use a plain object for deduplication rather than Map — avoids
+  // MapIterator/Set spreading which requires --downlevelIteration at
+  // this project's TypeScript target level.
+  const seen: Record<string, { keywordId: string; lgaId: string }> = {};
   for (const r of searchCounts) {
-    combinationKeys.set(`${r.keywordId}::${r.lgaId}`, { keywordId: r.keywordId, lgaId: r.lgaId });
+    seen[`${r.keywordId}::${r.lgaId}`] = { keywordId: r.keywordId, lgaId: r.lgaId };
   }
   for (const r of competitorCounts) {
-    combinationKeys.set(`${r.keywordId}::${r.lgaId}`, { keywordId: r.keywordId, lgaId: r.lgaId });
+    seen[`${r.keywordId}::${r.lgaId}`] = { keywordId: r.keywordId, lgaId: r.lgaId };
   }
+  const combinations = Object.values(seen);
 
-  if (combinationKeys.size === 0) return [];
+  if (combinations.length === 0) return [];
 
-  const keywordIds = Array.from(new Set([...combinationKeys.values()].map((c) => c.keywordId)));
-  const lgaIds = Array.from(new Set([...combinationKeys.values()].map((c) => c.lgaId)));
+  const kwSet: Record<string, boolean> = {};
+  const lgaSet: Record<string, boolean> = {};
+  for (const c of combinations) { kwSet[c.keywordId] = true; lgaSet[c.lgaId] = true; }
+  const keywordIds = Object.keys(kwSet);
+  const lgaIds = Object.keys(lgaSet);
 
   const [keywords, lgas, overrides] = await Promise.all([
     prisma.keyword.findMany({
@@ -96,7 +103,7 @@ export async function getTopKeywordLocationSignals(limit = 50): Promise<KeywordP
   const compMap = new Map(competitorCounts.map((r) => [`${r.keywordId}::${r.lgaId}`, Number(r.count)]));
 
   const rows: KeywordPricingRow[] = [];
-  for (const { keywordId, lgaId } of combinationKeys.values()) {
+  for (const { keywordId, lgaId } of combinations) {
     const kw = kwMap.get(keywordId);
     const lga = lgaMap.get(lgaId);
     if (!kw || !lga) continue;
