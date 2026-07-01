@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { TrendingUp, MapPin } from "lucide-react";
-import { getKeywordLocationSignals, type KeywordLocationSignal } from "./ad-intelligence-actions";
+import { getKeywordLocationSignals, type KeywordLocationSignal } from "@/app/admin/ad-campaigns/ad-intelligence-actions";
 
 export default function KeywordIntelligencePanel({
   keywordId,
