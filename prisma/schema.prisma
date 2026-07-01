@@ -235,6 +235,7 @@ model LocalGovernment {
   businessPages BusinessPage[]
   adCampaignTargets AdCampaignTarget[]
   adPriceOverrides  AdPriceOverride[]
+  searchEvents      KeywordSearchEvent[]
 
   @@unique([stateId, name])
   @@map("local_governments")
@@ -296,6 +297,7 @@ model Keyword {
   sponsoredListings SponsoredListing[]
   adCampaignTargets AdCampaignTarget[]
   adPriceOverrides  AdPriceOverride[]
+  searchEvents      KeywordSearchEvent[]
 
   @@index([name])
   @@index([status])
@@ -654,4 +656,23 @@ model PageView {
   createdAt       DateTime     @default(now())
 
   @@map("page_views")
+}
+
+// Lightweight search event — one row per search that includes a keyword
+// term. Inserted fire-and-forget from the search action so it never
+// slows down actual search results. Foundation for the demand/trending
+// signal used by both admin pricing intelligence and the business owner
+// target-selection screen.
+model KeywordSearchEvent {
+  id                String           @id @default(uuid())
+  keywordId         String?
+  keyword           Keyword?         @relation(fields: [keywordId], references: [id])
+  keywordText       String
+  localGovernmentId String?
+  localGovernment   LocalGovernment? @relation(fields: [localGovernmentId], references: [id])
+  searchedAt        DateTime         @default(now())
+
+  @@index([keywordId, searchedAt])
+  @@index([localGovernmentId, searchedAt])
+  @@map("keyword_search_events")
 }
