@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getAdPriceOverrides } from "../ad-campaigns-admin-actions";
+import { getTopKeywordLocationSignals } from "@/app/admin/ad-campaigns/ad-intelligence-actions";
 import PricingOverridesClient from "./PricingOverridesClient";
 
 export default async function AdPricingOverridesPage() {
@@ -40,7 +41,10 @@ export default async function AdPricingOverridesPage() {
     redirect("/admin/ad-campaigns");
   }
 
-  const initialOverrides = await getAdPriceOverrides();
+  const [initialOverrides, initialSignals] = await Promise.all([
+    getAdPriceOverrides(),
+    getTopKeywordLocationSignals(100),
+  ]);
 
-  return <PricingOverridesClient initialOverrides={initialOverrides} />;
+  return <PricingOverridesClient initialOverrides={initialOverrides} initialSignals={initialSignals} />;
 }
