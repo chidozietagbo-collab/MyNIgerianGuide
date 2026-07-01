@@ -66,8 +66,8 @@ export async function getTopKeywordLocationSignals(limit = 50): Promise<KeywordP
 
   if (combinationKeys.size === 0) return [];
 
-  const keywordIds = [...new Set([...combinationKeys.values()].map((c) => c.keywordId))];
-  const lgaIds = [...new Set([...combinationKeys.values()].map((c) => c.lgaId))];
+  const keywordIds = Array.from(new Set([...combinationKeys.values()].map((c) => c.keywordId)));
+  const lgaIds = Array.from(new Set([...combinationKeys.values()].map((c) => c.lgaId)));
 
   const [keywords, lgas, overrides] = await Promise.all([
     prisma.keyword.findMany({
@@ -173,7 +173,7 @@ export async function getKeywordLocationSignals(keywordId: string): Promise<Keyw
     `,
   ]);
 
-  const lgaIds = [...new Set([...searchCounts.map((r) => r.lgaId), ...competitorCounts.map((r) => r.lgaId)])];
+  const lgaIds = Array.from(new Set([...searchCounts.map((r) => r.lgaId), ...competitorCounts.map((r) => r.lgaId)]));
   if (lgaIds.length === 0) return [];
 
   const [lgas, overrides] = await Promise.all([
