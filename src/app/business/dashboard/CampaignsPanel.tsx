@@ -17,6 +17,7 @@ import {
   type CampaignTargetInput,
 } from "./campaign-actions";
 import EditCampaignTargetsPanel from "./EditCampaignTargetsPanel";
+import KeywordIntelligencePanel from "./KeywordIntelligencePanel";
 import { submitNewKeywordForEdit } from "@/components/actions";
 import { DURATION_OPTIONS, type DurationDays } from "@/lib/sponsored-pricing";
 
@@ -623,11 +624,11 @@ function CreateCampaignForm({
           </div>
         )}
 
-        <div className="mt-2 grid gap-2 sm:grid-cols-3">
+        <div className="mt-2">
           <select
             value={pendingKeywordId ?? ""}
             onChange={(e) => setPendingKeywordId(e.target.value)}
-            className="rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900"
+            className="w-full rounded-md border border-ink-100 px-3 py-2 text-sm text-ink-900 sm:w-1/3"
           >
             {allKnownKeywords.length === 0 && <option value="">Search above or add keywords to your page</option>}
             {keywords.length > 0 && (
@@ -662,6 +663,19 @@ function CreateCampaignForm({
               ) : null;
             })()}
           </select>
+
+          {pendingKeywordId && (
+            <KeywordIntelligencePanel
+              keywordId={pendingKeywordId}
+              keywordName={allKnownKeywords.find((k) => k.id === pendingKeywordId)?.name ?? ""}
+              onSelectCity={(lgaId) => {
+                setPendingLgaId(lgaId);
+              }}
+            />
+          )}
+        </div>
+
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <select
             value={selectedStateId ?? ""}
             onChange={(e) => setSelectedStateId(e.target.value || null)}
