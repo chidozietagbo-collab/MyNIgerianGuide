@@ -179,6 +179,36 @@ export async function searchBusinesses({
 
   const sponsoredIds = new Set(sponsoredResults.map((r) => r.id));
 
+  // Record a search event for the demand/trending signal — fire-and-forget,
+  // never awaited, so a failure here is invisible to the searcher and
+  // never delays their results. Only records when an actual keyword term
+  // was entered (blank keyword = browsing, not intent-driven search).
+  if (trimmedKeyword) {
+    prisma.keyword
+      .findFirst({
+        where: { name: { equals: trimmedKeyword, mode: "insensitive" }, status: "APPROVED" },
+        select: { id: true },
+      })
+      .then(async (kw) => {
+        let lgaId: string | null = null;
+        if (trimmedLocation) {
+          const lga = await prisma.localGovernment.findFirst({
+            where: { name: { contains: trimmedLocation, mode: "insensitive" } },
+            select: { id: true },
+          });
+          lgaId = lga?.id ?? null;
+        }
+        return prisma.keywordSearchEvent.create({
+          data: {
+            keywordId: kw?.id ?? null,
+            keywordText: trimmedKeyword,
+            localGovernmentId: lgaId,
+          },
+        });
+      })
+      .catch((err) => console.error("Failed to record search event:", err));
+  }
+
   const results = await prisma.businessPage.findMany({
     where,
     orderBy: [{ verificationStatus: "desc" }, { averageRating: "desc" }],
