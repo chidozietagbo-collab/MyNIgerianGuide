@@ -59,9 +59,10 @@ export default async function RootLayout({
   // and an owner can have more than one page.
   let isAdmin = false;
   let ownedBusinessPages: { name: string; slug: string }[] = [];
+  let userProfile: { name: string | null; avatarUrl: string | null } = { name: null, avatarUrl: null };
 
   if (user) {
-    const [adminUser, businessPages] = await Promise.all([
+    const [adminUser, businessPages, profile] = await Promise.all([
       prisma.adminUser.findUnique({
         where: { userId: user.id },
         select: { isActive: true },
@@ -71,16 +72,21 @@ export default async function RootLayout({
         select: { name: true, slug: true },
         orderBy: { createdAt: "asc" },
       }),
+      prisma.user.findUnique({
+        where: { id: user.id },
+        select: { name: true, avatarUrl: true },
+      }),
     ]);
     isAdmin = !!adminUser?.isActive;
     ownedBusinessPages = businessPages;
+    userProfile = { name: profile?.name ?? null, avatarUrl: profile?.avatarUrl ?? null };
   }
 
   return (
     <html lang="en">
       <body className={`${display.variable} ${body.variable} font-body antialiased bg-ink-50 text-ink-700`}>
         <Navbar
-          user={user ? { email: user.email ?? "" } : null}
+          user={user ? { email: user.email ?? "", name: userProfile.name, avatarUrl: userProfile.avatarUrl } : null}
           isAdmin={isAdmin}
           ownedBusinessPages={ownedBusinessPages}
         />
