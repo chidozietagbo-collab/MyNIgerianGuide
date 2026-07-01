@@ -15,7 +15,7 @@ const navLinks = [
 ];
 
 type NavbarProps = {
-  user: { email: string } | null;
+  user: { email: string; name: string | null; avatarUrl: string | null } | null;
   isAdmin?: boolean;
   ownedBusinessPages?: { name: string; slug: string }[];
 };
@@ -81,9 +81,21 @@ export default function Navbar({ user, isAdmin = false, ownedBusinessPages = [] 
               <NotificationBell />
               <Link
                 href="/account"
-                className="text-sm font-medium text-ink-700 transition hover:text-green-600"
+                className="flex items-center gap-2 text-sm font-medium text-ink-700 transition hover:text-green-600"
               >
-                {user.email}
+                {user.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={user.avatarUrl}
+                    alt=""
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
+                    {(user.name ?? user.email).charAt(0).toUpperCase()}
+                  </span>
+                )}
+                <span>{user.name ?? user.email}</span>
               </Link>
               <button
                 type="button"
@@ -172,10 +184,18 @@ export default function Navbar({ user, isAdmin = false, ownedBusinessPages = [] 
               <>
                 <Link
                   href="/account"
-                  className="text-sm font-medium text-ink-700"
+                  className="flex items-center gap-2 text-sm font-medium text-ink-700"
                   onClick={() => setOpen(false)}
                 >
-                  {user.email}
+                  {user.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={user.avatarUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
+                  ) : (
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-600 text-xs font-bold text-white">
+                      {(user.name ?? user.email).charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                  <span>{user.name ?? user.email}</span>
                 </Link>
                 <button
                   type="button"
